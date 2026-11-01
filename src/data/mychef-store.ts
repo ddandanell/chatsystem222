@@ -41,6 +41,17 @@ import {
   retrievalNotice,
 } from "@/lib/retrieval-policy";
 import type { HumanDecision, Outcome } from "@/lib/reason-codes";
+import {
+  REASON_FILTERS,
+  STATE_FILTERS,
+  bucketCaseSql,
+  emptyFilterCounts,
+  isReasonFilter,
+  reasonPredicate,
+  stateWhereSql,
+  type DeskFilter,
+  type DeskFilterCounts,
+} from "@/lib/desk-filters";
 import type { SourceRef } from "@/db/schema";
 
 export const MYCHEF_WORKSPACE = "mychef";
@@ -485,6 +496,26 @@ export async function getRecordedDecision(id: string) {
 }
 
 /**
+ * MC-182: the queue lists conversations, so the desk has to be able to open the ledger row for a
+ * conversation id. Before this, only a decision id resolved, which is why the new `decided` filter
+ * would have shown a fresh draft and an Approve button for a conversation that already has a
+ * decision — the write path refuses that, but a refusal is not a receipt.
+ */
+export async function getRecordedDecisionForConversation(conversationId: string) {
+  const rows = await query<{ id: string }>(
+    `select id::text as id
+     from mychef_inbox.decision_records
+     where workspace_id = $1 and conversation_id = $2
+     order by created_at desc
+     limit 1`,
+    [MYCHEF_WORKSPACE, conversationId],
+  );
+  const id = rows[0]?.id;
+  if (!id) return null;
+  return getRecordedDecision(id);
+}
+
+/**
  * Authoritative knowledge only: approved, in this project (or approved global), never a candidate
  * source. The SQL gate is the first line; rankKnowledgeRows() re-checks every row so a future
  * query change cannot silently widen the set. Exclusion counts come from a grouped metadata
@@ -803,7 +834,7 @@ export async function reviewConversation(
   }
 }
 
-export type DeskFilter = "all" | "needs_review" | "auto_sent" | "escalated";
+export type { DeskFilter } from "@/lib/desk-filters";
 
 export type DeskQueueItem = {
   id: string;
@@ -823,20 +854,22 @@ function confidenceFromSourceIds(raw: unknown): number | null {
   return normalizeDraftMeta(raw).confidence;
 }
 
+/**
+ * MC-182. Rows and counts both take their predicate from `@/lib/desk-filters`, so the number on a
+ * chip is the number of rows that chip opens — one definition, two callers. The previous version
+ * collapsed `all` and `needs_review` into one predicate, which left 672 of 791 conversations
+ * reachable by no filter at all.
+ */
 export async function listDeskQueue(
-  filter: DeskFilter = "needs_review",
+  filter: DeskFilter = "needs_reply",
   page = 1,
   search = "",
 ): Promise<{ rows: DeskQueueItem[]; total: number; page: number; pageSize: number }> {
   const requested = pageOffset(page);
   const needle = search.trim().replace(/[%_]/g, "");
 
-  if (filter === "auto_sent" || filter === "escalated") {
-    const reasonClause =
-      filter === "auto_sent"
-        ? `d.reason_code = 'auto_sent_candidate'`
-        : `(d.human_decision = 'rejected' and d.rejected_alternative = 'escalated')
-           or d.reason_code = 'needs_human'`;
+  if (isReasonFilter(filter)) {
+    const predicate = reasonPredicate(filter);
     const totalRows = await query<{ n: string }>(
       `select count(*)::text as n
        from mychef_inbox.decision_records d
@@ -845,7 +878,7 @@ export async function listDeskQueue(
        left join mychef_inbox.contacts ct
          on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
        where d.workspace_id = $1
-         and (${reasonClause})
+         and (${predicate})
          and ($2::text = '' or ct.name ilike '%' || $2 || '%')`,
       [MYCHEF_WORKSPACE, needle],
     );
@@ -875,7 +908,7 @@ export async function listDeskQueue(
          order by created_at desc limit 1
        ) m on true
        where d.workspace_id = $1
-         and (${reasonClause})
+         and (${predicate})
          and ($2::text = '' or ct.name ilike '%' || $2 || '%')
        order by d.created_at desc
        limit $3 offset $4`,
@@ -904,10 +937,8 @@ export async function listDeskQueue(
     };
   }
 
-  const pendingOnly = filter === "needs_review" || filter === "all";
-  if (!pendingOnly) {
-    return { rows: [], total: 0, page: 1, pageSize: PAGE_SIZE };
-  }
+  const stateWhere = stateWhereSql(filter);
+  const bucket = `(${bucketCaseSql()})`;
 
   const totalRows = await query<{ n: string }>(
     `select count(*)::text as n
@@ -915,12 +946,8 @@ export async function listDeskQueue(
      join mychef_inbox.contacts ct
        on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
      where c.workspace_id = $1
-       and c.status = 'needs_reply'
        and ($2::text = '' or ct.name ilike '%' || $2 || '%')
-       and not exists (
-         select 1 from mychef_inbox.decision_records d
-         where d.workspace_id = c.workspace_id and d.conversation_id = c.id
-       )`,
+       and (${stateWhere})`,
     [MYCHEF_WORKSPACE, needle],
   );
   const total = Number(totalRows[0]?.n ?? 0);
@@ -934,9 +961,10 @@ export async function listDeskQueue(
     facts: unknown;
     channel: string | null;
     source_ids: unknown;
+    bucket: string;
   }>(
     `select c.id, ct.name, left(m.body, 160) as inbound, c.last_message_at,
-            ct.facts, c.channel, dr.source_ids
+            ct.facts, c.channel, dr.source_ids, ${bucket} as bucket
      from mychef_inbox.conversations c
      join mychef_inbox.contacts ct
        on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
@@ -951,12 +979,8 @@ export async function listDeskQueue(
        order by created_at desc limit 1
      ) dr on true
      where c.workspace_id = $1
-       and c.status = 'needs_reply'
        and ($2::text = '' or ct.name ilike '%' || $2 || '%')
-       and not exists (
-         select 1 from mychef_inbox.decision_records d
-         where d.workspace_id = c.workspace_id and d.conversation_id = c.id
-       )
+       and (${stateWhere})
      order by c.last_message_at desc nulls last
      limit $3 offset $4`,
     [MYCHEF_WORKSPACE, needle, PAGE_SIZE, offset],
@@ -965,6 +989,7 @@ export async function listDeskQueue(
     rows: rows.map((row) => {
       const tags = tagsFromFacts(parseFacts(row.facts));
       const confidence = confidenceFromSourceIds(row.source_ids);
+      const bucketId = row.bucket as DeskFilter;
       return {
         id: row.id,
         kind: "conversation" as const,
@@ -974,15 +999,63 @@ export async function listDeskQueue(
         tags,
         categories: categoriesFromTags(tags),
         confidence,
-        unread: true,
+        unread: bucketId === "needs_reply",
         channel: row.channel,
-        filterBucket: "needs_review",
+        filterBucket: bucketId,
       };
     }),
     total,
     page: safePage,
     pageSize: PAGE_SIZE,
   };
+}
+
+/**
+ * MC-182: the number on every chip. Conversation states come from the same bucket expression the
+ * list uses; the two decision lenses from the same predicates. One round trip each, never a query
+ * per chip.
+ */
+export async function deskFilterCounts(search = ""): Promise<DeskFilterCounts> {
+  const needle = search.trim().replace(/[%_]/g, "");
+  const bucket = `(${bucketCaseSql()})`;
+  const counts = emptyFilterCounts();
+
+  const conversationRows = await query<Record<string, string>>(
+    `select count(*)::text as total,
+            count(*) filter (where ${bucket} = 'needs_reply')::text as needs_reply,
+            count(*) filter (where ${bucket} = 'waiting')::text as waiting,
+            count(*) filter (where ${bucket} = 'decided')::text as decided,
+            count(*) filter (where ${bucket} = 'closed')::text as closed
+     from mychef_inbox.conversations c
+     join mychef_inbox.contacts ct
+       on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
+     where c.workspace_id = $1
+       and ($2::text = '' or ct.name ilike '%' || $2 || '%')`,
+    [MYCHEF_WORKSPACE, needle],
+  );
+  const conversationRow = conversationRows[0] ?? {};
+  for (const id of ["all", ...STATE_FILTERS] as DeskFilter[]) {
+    const raw = id === "all" ? conversationRow.total : conversationRow[id];
+    counts[id] = Number(raw ?? 0);
+  }
+
+  const decisionRows = await query<Record<string, string>>(
+    `select count(*) filter (where ${reasonPredicate("escalated")})::text as escalated,
+            count(*) filter (where ${reasonPredicate("auto_sent")})::text as auto_sent
+     from mychef_inbox.decision_records d
+     left join mychef_inbox.conversations c
+       on c.workspace_id = d.workspace_id and c.id = d.conversation_id
+     left join mychef_inbox.contacts ct
+       on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
+     where d.workspace_id = $1
+       and ($2::text = '' or ct.name ilike '%' || $2 || '%')`,
+    [MYCHEF_WORKSPACE, needle],
+  );
+  const decisionRow = decisionRows[0] ?? {};
+  for (const id of REASON_FILTERS) {
+    counts[id] = Number(decisionRow[id] ?? 0);
+  }
+  return counts;
 }
 
 export async function updateContactTags(conversationId: string, tags: string[]) {

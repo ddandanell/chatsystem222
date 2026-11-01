@@ -21,21 +21,19 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import type { DeskFilter, DeskQueueItem } from "@/data/mychef-store";
+import { DESK_FILTERS, type DeskFilterCounts } from "@/lib/desk-filters";
 import { excerpt, formatWhen, initials } from "@/lib/format";
 import { cn } from "cn";
 
-const FILTERS: { id: DeskFilter; label: string }[] = [
-  { id: "needs_review", label: "Needs Review" },
-  { id: "escalated", label: "Escalated" },
-  { id: "auto_sent", label: "Auto-Sent" },
-  { id: "all", label: "All" },
-];
+const DEFAULT_FILTER: DeskFilter = "needs_reply";
 
+/**
+ * MC-182: the badge names the state the row is actually in, taken from the same bucket the filter
+ * used, so an `all` queue tells the operator which conversation needs them instead of labelling
+ * everything "Open".
+ */
 function statusLabel(filterBucket: DeskFilter): string {
-  if (filterBucket === "needs_review") return "Needs review";
-  if (filterBucket === "escalated") return "Escalated";
-  if (filterBucket === "auto_sent") return "Auto-sent";
-  return "Open";
+  return DESK_FILTERS.find((item) => item.id === filterBucket)?.label ?? "Open";
 }
 
 export function QueuePane({
@@ -45,6 +43,7 @@ export function QueuePane({
   rows,
   activeId,
   total,
+  counts,
   page,
   pageSize,
 }: {
@@ -54,6 +53,7 @@ export function QueuePane({
   rows: DeskQueueItem[];
   activeId: string | null;
   total: number;
+  counts: DeskFilterCounts;
   page: number;
   pageSize: number;
 }) {
@@ -62,7 +62,7 @@ export function QueuePane({
   function hrefFor(next: { filter?: DeskFilter; q?: string; page?: number; id?: string | null }) {
     const params = new URLSearchParams();
     const f = next.filter ?? filter;
-    if (f !== "needs_review") params.set("filter", f);
+    if (f !== DEFAULT_FILTER) params.set("filter", f);
     const q = next.q ?? search;
     if (q) params.set("q", q);
     if ((next.page ?? page) > 1) params.set("page", String(next.page ?? page));
@@ -79,7 +79,7 @@ export function QueuePane({
           <Badge variant="secondary">{total}</Badge>
         </div>
         <form className="flex gap-2" action={`/${slug}/inbox`}>
-          {filter !== "needs_review" ? <input type="hidden" name="filter" value={filter} /> : null}
+          {filter !== DEFAULT_FILTER ? <input type="hidden" name="filter" value={filter} /> : null}
           <div className="relative min-w-0 flex-1">
             <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -95,21 +95,37 @@ export function QueuePane({
           </Button>
         </form>
         <div className="flex flex-wrap gap-2">
-          {FILTERS.map((item) => (
-            <Link
-              key={item.id}
-              href={hrefFor({ filter: item.id, page: 1, id: null })}
-              data-tap
-              className={cn(
-                "inline-flex h-7 items-center rounded-md px-2.5 text-xs transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-                filter === item.id
-                  ? "bg-foreground text-background"
-                  : "border border-border bg-background text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {item.label}
-            </Link>
-          ))}
+          {DESK_FILTERS.map((item) => {
+            const count = counts[item.id] ?? 0;
+            return (
+              <Link
+                key={item.id}
+                href={hrefFor({ filter: item.id, page: 1, id: null })}
+                data-tap
+                data-filter={item.id}
+                data-count={count}
+                aria-current={filter === item.id ? "true" : undefined}
+                title={`${item.hint} — ${count}`}
+                className={cn(
+                  "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+                  filter === item.id
+                    ? "bg-foreground text-background"
+                    : "border border-border bg-background text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {item.label}
+                <span
+                  data-count-for={item.id}
+                  className={cn(
+                    "tabular-nums text-[11px]",
+                    filter === item.id ? "text-background/70" : "text-muted-foreground/80",
+                  )}
+                >
+                  {count}
+                </span>
+              </Link>
+            );
+          })}
         </div>
       </div>
 
@@ -127,9 +143,15 @@ export function QueuePane({
                     <EmptyDescription>
                       {search
                         ? "No conversations match this search."
-                        : filter === "needs_review"
-                          ? "No threads waiting for review."
-                          : "Try another filter or search."}
+                        : filter === "needs_reply"
+                          ? "Nothing is waiting for a reply."
+                          : filter === "waiting"
+                            ? "No conversation is waiting on us."
+                            : filter === "decided"
+                              ? "No review has been recorded yet."
+                              : filter === "closed"
+                                ? "No conversation is closed."
+                                : "Try another filter or search."}
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
