@@ -4,6 +4,7 @@
  */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { loginCallback } from "@/lib/login-callback";
 import {
   SECURE_SESSION_COOKIE,
   SESSION_COOKIE,
@@ -12,7 +13,7 @@ import {
 } from "@/lib/session-token";
 
 const PUBLIC_PATHS = [
-  /^\/login\/?$/,
+  /^\/login(\/reset)?\/?$/,
   /^\/api\/auth(\/|$)/,
   /^\/api\/webhooks\/ghl\/?$/,
   /^\/api\/cron\/learn\/?$/,
@@ -53,7 +54,8 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
-    if (pathname !== "/") url.searchParams.set("callbackUrl", pathname);
+    const callback = loginCallback(pathname, request.nextUrl.search);
+    if (callback) url.searchParams.set("callbackUrl", callback);
     const response = NextResponse.redirect(url);
     // A value that failed verification is not a session; drop it so the browser stops resending it.
     // A missing secret is a deployment fault, not a bad cookie, so the cookie is left alone there.
