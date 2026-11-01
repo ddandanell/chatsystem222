@@ -269,10 +269,14 @@ export async function completeReset(input: {
   if (spent.rowCount !== 1) return { ok: false, code: "expired" };
 
   // Audit row: the action and who, never the token and never the hash.
+  //
+  // The completion row carries the operator email, not "self-service" (ruling, 2026-11-01): the
+  // request row is the anonymous one and carries self-service, but by the time the token is spent
+  // the row that names which account was reset is known, and that is what an audit reader needs.
   await appPool.query(
     `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
      values ($1, $2, 'operator.password.reset', $3)`,
-    [WORKSPACE, "self-service", row.id],
+    [WORKSPACE, accountEmail, row.id],
   );
 
   return { ok: true };
