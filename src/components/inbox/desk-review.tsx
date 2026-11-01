@@ -8,7 +8,7 @@
  */
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -63,6 +63,11 @@ import { Textarea } from "@/components/ui/textarea";
 import type { CategoryTagId } from "@/lib/contact-tags";
 import type { ContactResponseMetrics } from "@/lib/contact-response";
 import { channelLabel } from "@/lib/channels";
+import {
+  receiptHeadline,
+  receiptSentence,
+  shortDecisionId,
+} from "@/lib/decision-receipt";
 import { formatConfidence, formatWhen, initials } from "@/lib/format";
 import { REASON_CODES } from "@/lib/reason-codes";
 import { cn } from "cn";
@@ -417,6 +422,13 @@ export function DeskReview({
   const [tagDraft, setTagDraft] = useState(conversation.tags.join(", "));
   const [updatingTags, setUpdatingTags] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // UX-0211: what the decision left behind, so an irreversible verdict cannot land silently.
+  const [receipt, setReceipt] = useState<{
+    headline: string;
+    message: string;
+    id: string | null;
+  } | null>(null);
+  const receiptRef = useRef<HTMLDivElement | null>(null);
   const [draftError, setDraftError] = useState<string | null>(initialDraftError);
   const [sourceOpen, setSourceOpen] = useState<string | null>(null);
 
@@ -439,6 +451,8 @@ export function DeskReview({
   }
 
   function submit(decision: "accepted" | "edited" | "escalated") {
+    // One decision per thread, and no second write once the receipt is on screen.
+    if (receipt) return;
     startTransition(async () => {
       setError(null);
       const form = new FormData();
@@ -474,7 +488,12 @@ export function DeskReview({
         setError(result.error);
         return;
       }
-      goNext();
+      // The action already built the receipt; the desk used to discard it and navigate away.
+      setReceipt({
+        headline: receiptHeadline(human),
+        message: receiptSentence(result?.message),
+        id: shortDecisionId(result?.id),
+      });
     });
   }
 
@@ -522,10 +541,12 @@ export function DeskReview({
     setError(null);
     setDraftError(initialDraftError);
     setSourceOpen(null);
+    setReceipt(null);
   }, [conversation.id, conversation.draft?.body, conversation.tags, initialDraftError]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
+      if (receipt) return;
       const target = event.target as HTMLElement | null;
       const typing =
         target &&
@@ -551,6 +572,10 @@ export function DeskReview({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+
+  useEffect(() => {
+    if (receipt) receiptRef.current?.focus();
+  }, [receipt]);
 
   const messageGroups = useMemo(() => {
     const groups: { key: string; label: string; items: DeskConversation["messages"] }[] = [];
@@ -758,6 +783,7 @@ export function DeskReview({
                       if (dirty || editing) setContextTab("why");
                     }}
                     rows={6}
+                    readOnly={Boolean(receipt)}
                     className="min-h-28 bg-background"
                     aria-label="AI suggested reply"
                   />
@@ -771,6 +797,8 @@ export function DeskReview({
                   ) : null}
                 </CardContent>
                 <CardFooter className="flex flex-wrap gap-2 bg-card">
+                  {receipt ? null : (
+                    <>
                   <Button
                     type="button"
                     disabled={pending}
@@ -812,6 +840,8 @@ export function DeskReview({
                   <span className="self-center text-xs text-muted-foreground">
                     A approve · E edit · ⌘ Enter
                   </span>
+                    </>
+                  )}
                 </CardFooter>
               </Card>
             ) : (
@@ -841,6 +871,38 @@ export function DeskReview({
                 </CardContent>
               </Card>
             )}
+
+            {receipt ? (
+              <div
+                role="status"
+                aria-live="polite"
+                tabIndex={-1}
+                ref={receiptRef}
+                data-slot="decision-receipt"
+                className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-muted/40 p-3 outline-none"
+              >
+                <p className="text-sm font-medium">{receipt.headline}</p>
+                <p className="text-xs text-muted-foreground">{receipt.message}</p>
+                {receipt.id ? (
+                  <p className="font-mono text-xs text-muted-foreground" title={receipt.id}>
+                    decision {receipt.id}
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button type="button" onClick={goNext}>
+                    Next conversation
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    render={<Link href={`/${slug}/inbox`} />}
+                    nativeButton={false}
+                  >
+                    Back to the queue
+                  </Button>
+                </div>
+              </div>
+            ) : null}
 
             {error ? (
               <Alert variant="destructive">
