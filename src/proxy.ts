@@ -1,8 +1,15 @@
 /**
- * Session gate. Strips client tenant headers. Leaves GHL and cron public. Do not auto-send.
+ * Session gate. Verifies the Auth.js JWT, not just the cookie's presence. Strips client tenant
+ * headers. Leaves GHL and cron public. Do not auto-send.
  */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import {
+  SECURE_SESSION_COOKIE,
+  SESSION_COOKIE,
+  checkSessionToken,
+  sessionGate,
+} from "@/lib/session-token";
 
 const PUBLIC_PATHS = [
   /^\/login\/?$/,
@@ -11,14 +18,7 @@ const PUBLIC_PATHS = [
   /^\/api\/cron\/learn\/?$/,
 ];
 
-function hasSession(request: NextRequest) {
-  return Boolean(
-    request.cookies.get("authjs.session-token")?.value ||
-      request.cookies.get("__Secure-authjs.session-token")?.value,
-  );
-}
-
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const headers = new Headers(request.headers);
   for (const key of [...headers.keys()]) {
     const lower = key.toLowerCase();
@@ -34,11 +34,37 @@ export function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some((pattern) => pattern.test(pathname));
-  if (!isPublic && !hasSession(request)) {
+
+  const secure = Boolean(request.cookies.get(SECURE_SESSION_COOKIE)?.value);
+  const cookieName = secure ? SECURE_SESSION_COOKIE : SESSION_COOKIE;
+  const state = await checkSessionToken({
+    token: request.cookies.get(cookieName)?.value,
+    secret: process.env.AUTH_SECRET,
+    cookieName,
+  });
+
+  const action = sessionGate({
+    publicPath: isPublic,
+    state,
+    production: process.env.NODE_ENV === "production",
+  });
+
+  if (action === "login") {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    url.search = "";
     if (pathname !== "/") url.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(url);
+    const response = NextResponse.redirect(url);
+    // A value that failed verification is not a session; drop it so the browser stops resending it.
+    // A missing secret is a deployment fault, not a bad cookie, so the cookie is left alone there.
+    if (state.state === "invalid" && state.reason !== "no_secret") {
+      for (const name of [SESSION_COOKIE, SECURE_SESSION_COOKIE]) {
+        if (request.cookies.get(name)) {
+          response.cookies.set(name, "", { path: "/", maxAge: 0 });
+        }
+      }
+    }
+    return response;
   }
 
   return NextResponse.next({ request: { headers } });

@@ -1407,7 +1407,19 @@ export async function proposeFromDecision(decisionId: string, actorId: string) {
     return { ok: true as const, queued: false as const, id: null, queueType: null };
   }
 
-  const proposal = statementFor(decision.reason_code, 1);
+  // The card states how often this reason has been seen, so count the learnable decisions of
+  // this reason instead of hardcoding 1. Never below 1: this decision is one of them.
+  const counted = await query<{ n: string }>(
+    `select count(*)::text as n
+     from mychef_inbox.decision_records d
+     join mychef_inbox.feedback f on f.id = d.feedback_id
+     where d.workspace_id = $1 and d.reason_code = $2 and ${LEARNABLE_DECISIONS_SQL}`,
+    [MYCHEF_WORKSPACE, decision.reason_code],
+  );
+  const proposal = statementFor(
+    decision.reason_code,
+    Math.max(1, Number(counted[0]?.n ?? 0)),
+  );
   if (!proposal) {
     return { ok: false as const, error: "That reason does not map to a Learning Queue card." };
   }
