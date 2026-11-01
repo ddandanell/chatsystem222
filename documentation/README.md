@@ -34,6 +34,7 @@ Project docs for the myCHEF operations console (decision ledger, inbox desk, kno
 | Doc | Purpose |
 |-----|---------|
 | [retrieval-policy.md](./retrieval-policy.md) | What a draft may quote: approval gate and project scope |
+| [isolation-evidence.md](./isolation-evidence.md) | How to measure RLS/policy state; strict acceptance gate for step C |
 | [agent-spec.md](./agent-spec.md) | Schema, RLS, reason codes |
 | [technical-blueprint.md](./technical-blueprint.md) | Stack, BYOK, multi-tenant |
 | [architecture.md](./architecture.md) | Original four-store foundation |
