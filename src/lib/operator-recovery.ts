@@ -16,16 +16,17 @@ import { appPool } from "@/db/client";
 import {
   MAX_ADDRESS_REQUESTS,
   MAX_IDENTIFIER_REQUESTS,
-  RATE_WINDOW_MS,
   RESET_TTL_MS,
   buildResetLink,
   checkPassword,
   classifyReset,
   generateResetToken,
+  hashAddressKey,
   hashResetToken,
   isValidResetTokenShape,
   nextAttemptState,
   normalizeBaseUrl,
+  pruneAddressWindow,
   readResetState,
   resetExpiry,
   resetIssuedAt,
@@ -54,21 +55,21 @@ function resetSender(): string {
  *
  * Deliberately in memory: there is nowhere durable to put it without DDL, and an unknown address
  * has no operator row to write to. It is therefore per server instance and best-effort, which is
- * stated in the PR body rather than hidden. The per-identifier cap is durable, in jsonb.
+ * stated in the PR body rather than hidden. The per-identifier cap is durable, in jsonb, and that
+ * is the control that actually holds; this one is abuse friction only.
+ *
+ * The map is keyed by a hash of the address, never by the address itself, and the key is never
+ * logged. Bounded by pruneAddressWindow: expired entries first, then oldest-first eviction.
  */
 const addressWindow = new Map<string, { attempts: number; windowStart: string }>();
 const ADDRESS_WINDOW_MAX_KEYS = 500;
 
 function addressAllowed(address: string, now: number): boolean {
   if (!address || address === "unknown") return true;
-  if (addressWindow.size > ADDRESS_WINDOW_MAX_KEYS) {
-    for (const [key, value] of addressWindow) {
-      if (now - Date.parse(value.windowStart) >= RATE_WINDOW_MS) addressWindow.delete(key);
-    }
-    if (addressWindow.size > ADDRESS_WINDOW_MAX_KEYS) addressWindow.clear();
-  }
-  const next = nextAttemptState(addressWindow.get(address), now, MAX_ADDRESS_REQUESTS);
-  addressWindow.set(address, { attempts: next.attempts, windowStart: next.windowStart });
+  pruneAddressWindow(addressWindow, now, ADDRESS_WINDOW_MAX_KEYS);
+  const key = hashAddressKey(address);
+  const next = nextAttemptState(addressWindow.get(key), now, MAX_ADDRESS_REQUESTS);
+  addressWindow.set(key, { attempts: next.attempts, windowStart: next.windowStart });
   return next.allowed;
 }
 
@@ -268,6 +269,10 @@ export async function completeReset(input: {
   if (spent.rowCount !== 1) return { ok: false, code: "expired" };
 
   // Audit row: the action and who, never the token and never the hash.
+  //
+  // The completion row carries the operator email, not "self-service" (ruling, 2026-11-01): the
+  // request row is the anonymous one and carries self-service, but by the time the token is spent
+  // the row that names which account was reset is known, and that is what an audit reader needs.
   await appPool.query(
     `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
      values ($1, $2, 'operator.password.reset', $3)`,

@@ -88,6 +88,53 @@ export function hashResetToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
+/**
+ * The key an in-memory rate limiter is allowed to hold.
+ *
+ * The raw IP address is personal data and is not needed to count requests, so it is never what the
+ * map stores. The purpose string keeps this hash from matching the same address hashed elsewhere,
+ * and 32 hex characters is plenty: the map is a best-effort cap, not a security boundary, so a
+ * collision only makes two addresses share one counter.
+ */
+export function hashAddressKey(address: string): string {
+  const material = `mychef:reset-address:${address.trim().toLowerCase()}`;
+  return createHash("sha256").update(material, "utf8").digest("hex").slice(0, 32);
+}
+
+export type AddressWindowEntry = { attempts: number; windowStart: string };
+
+/**
+ * Keep the in-memory address window bounded, one entry at a time.
+ *
+ * Expired entries go first. If the map is still at the cap, the oldest entries are evicted until
+ * it is under it. Clearing the whole map instead would let a flood of distinct addresses wipe every
+ * live counter at once, which is the one thing an abusive client would most like to do.
+ */
+export function pruneAddressWindow(
+  window: Map<string, AddressWindowEntry>,
+  now: number,
+  cap: number,
+): void {
+  if (window.size < cap) return;
+  for (const [key, value] of window) {
+    const start = Date.parse(value.windowStart);
+    if (Number.isFinite(start) && now - start >= RATE_WINDOW_MS) window.delete(key);
+  }
+  while (window.size >= cap) {
+    let oldestKey: string | null = null;
+    let oldest = Number.POSITIVE_INFINITY;
+    for (const [key, value] of window) {
+      const start = Date.parse(value.windowStart);
+      if (Number.isFinite(start) && start < oldest) {
+        oldest = start;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey === null) break;
+    window.delete(oldestKey);
+  }
+}
+
 /** A fresh token and the hash that is allowed to touch the database. */
 export function generateResetToken(): { token: string; hash: string } {
   const token = randomBytes(TOKEN_BYTES).toString("base64url");
