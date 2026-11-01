@@ -1,53 +1,77 @@
 # GitHub + Vercel deploy
 
-Canonical GitHub: [numini-co/inbox-mychef](https://github.com/numini-co/inbox-mychef)
+Verified by QA on 2026-11-01 04:19Z against the live deployment.
 
-Preferred production tip: branch `cursor/decision-ledger-console-d800` (do not force-update `main` without reason).
+| Fact | Value |
+| --- | --- |
+| GitHub | `ddandanell/chatsystem222`, branch `main` |
+| Vercel project | `prj_AIYNRUT5LXDLRRoF2lasAgYeUGtH` (project name `chatsystem`) |
+| Production domain | `https://console.mychef.id` — attached, `verified: true`, Vercel nameservers |
+| Second alias | `https://chatsystem-sooty.vercel.app` (same project) |
+| Git link on the project | `ddandanell/AICHATSYSTEM`, `sourceless: true` — **not** `chatsystem222` |
+| Auto-deploy on push | **off** |
 
-## Clone from GitHub
+`numini-co/inbox-mychef`, `cursor/decision-ledger-console-d800` and `/cursor/stores/...` paths are stale. They do not exist for this project and must not be followed.
+
+## Clone and run
 
 ```bash
-git clone https://github.com/numini-co/inbox-mychef.git
-cd inbox-mychef
-git checkout cursor/decision-ledger-console-d800
+git clone https://github.com/ddandanell/chatsystem222.git
+cd chatsystem222
 npm install
-cp .env.example .env.local
-# Fill required names in .env.local — never commit that file
+cp .env.example .env.local      # fill names, never commit the file
+npm test                        # 76 tests
+npm run typecheck               # next typegen && tsc --noEmit
+npm run build
 npm run dev
 ```
 
-Node.js 20.9+ (repo pins `.nvmrc` → 22). See root [README.md](../../README.md) and [LOCAL.md](../../LOCAL.md).
+Node: `.nvmrc` pins 22; the QA box ran 24.22.1 with no issue. Neon role for `DATABASE_URL` and `KEY_READER_DATABASE_URL` is `mychef_runtime`, which cannot create schema objects — never run `db:setup` against Neon.
 
-## Link Vercel to GitHub (preferred)
+## Environment (Vercel, Production)
 
-Once Numini team SSO/MCP consent is done:
+Names only; values live in the Vercel project and in the gitignored `.env.local`.
 
-1. Open https://vercel.com/new on team **Numini** (`team_fVzrn4d5I1giSnLrnwsiBC1S`).
-2. Import **GitHub** `numini-co/inbox-mychef` (not a personal fork).
-3. Framework: **Next.js** (also set in `vercel.json`).
-4. Production branch: `cursor/decision-ledger-console-d800`.
-5. Root directory: `.` · Install: `npm ci` · Build: `npm run build`.
-6. Region: `sin1` (Singapore — matches Neon `ap-southeast-1`).
-7. Env (Production + Preview), names only — values in Vercel UI:
-
-| Required | Optional |
+| Name | Purpose |
 | --- | --- |
-| `DATABASE_URL` | `CRON_SECRET` |
-| `KEY_READER_DATABASE_URL` | `GHL_WEBHOOK_SECRET` |
-| `AUTH_SECRET` | |
-| `BYOK_ENCRYPTION_KEY` | |
-| `AUTH_URL` (= deployment origin) | |
-| `OPERATOR_BOOTSTRAP_EMAIL` | |
-| `OPERATOR_BOOTSTRAP_PASSWORD` | |
+| `DATABASE_URL` | Neon `mychef` / schema `mychef_inbox`, role `mychef_runtime` |
+| `KEY_READER_DATABASE_URL` | same database, reader role |
+| `AUTH_SECRET` | session token signing |
+| `BYOK_ENCRYPTION_KEY` | encrypts stored provider keys server-side |
+| `CRON_SECRET` | bearer for `GET /api/cron/learn`; empty means the route refuses everything |
+| `GHL_WEBHOOK_SECRET` | inbound webhook secret; empty means 503 for every event |
+| `AUTH_URL` | `https://console.mychef.id` |
 
-8. Deploy. Later pushes to the production branch auto-deploy via Vercel Git integration.
+Optional: `GHL_WEBHOOK_REQUIRE_SIGNATURE=1` refuses the shared-secret mode and requires `x-ghl-signature`. Unset today, so a request with a valid `x-ghl-timestamp` within ±300s and the shared secret is accepted.
 
-Permanent project creation waits on user Vercel MCP + Numini SSO. A claimable temp deploy already proved Neon connectivity.
+### Never set `OPERATOR_BOOTSTRAP_PASSWORD` in production
 
-## GitHub Actions
+`ensureBootstrapOperator()` (`src/lib/operators.ts`) runs on auth calls. When that variable holds at least 8 characters and does not match the stored scrypt hash, it **overwrites** `operator:bali@mychef.id` — new hash, `role: owner`, `enabled: true`. That silently undoes any password set at `/mychef/settings/access`, and it re-enables a deliberately disabled owner. Operator passwords are scrypt hashes with no recovery path: the supported move is a reset, not a lookup.
 
-[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs `npm ci` + `npm run build` on pushes/PRs. It does **not** deploy. Ship with Vercel Git integration after the project is linked.
+Related history worth keeping: with **zero** environment variables the project had no `DATABASE_URL`, so `usesMychefInbox()` was false and `/login` served the local demo branch — an email field, a Name field, demo buttons and no password input. Nobody could sign in. If `/login` ever lacks a password field again, check the env list before the database.
 
-## Agent / Origin note
+## Deploy
 
-Cursor agents push to Origin first. Mirror the same tip to GitHub when `GITHUB_TOKEN` / MCP Contents write is available. Leave `main` alone unless there is an explicit reason to move it.
+Auto-deploy is off. The project's git link points at `ddandanell/AICHATSYSTEM` with `sourceless: true`, and `PATCH /v9/projects` rejects both `link` and `gitRepository` (`400 should NOT have additional property`). **A merge to `main` therefore does not reach production.**
+
+Until the link is repointed to `chatsystem222` in the Vercel dashboard, every release is an explicit deployment creation on the project with `gitSource` repo id `1441419404`, `ref: main`, `type: production`, then verification below. Two releases must not run concurrently.
+
+## Verify after deploy
+
+1. `curl -s -o /dev/null -w '%{http_code}' https://console.mychef.id/login` → `200`, and the body contains `name="password"`.
+2. Owner sign-in succeeds and lands on `/mychef/inbox` with the real queue (113 conversations on 2026-11-01), not the Maya Chen / Jonah Hale demo list.
+3. `/mychef/dashboard`, `/mychef/candidates` (nav label Learning), `/mychef/knowledge`, `/mychef/evals`, `/mychef/audit`, `/mychef/settings/keys`, `/mychef/settings/access`, `/mychef/settings/autopilot`, `/mychef/settings/webhooks`, `/mychef/team`, `/mychef/import` all return `200`.
+4. `POST /api/webhooks/ghl` without `x-ghl-timestamp` refuses (401/503) and never returns `202`. A repeated delivery returns `duplicate: true` and creates no second draft.
+5. A signed-in draft shown in the UI quotes only approved, in-project knowledge; with 0 approved rows it must say there is no source.
+
+## Access protection
+
+`ssoProtection` is `all_except_custom_domains`, so `console.mychef.id` is public and guarded only by an operator password. Bot QA signs in with a limited reviewer operator rather than SSO; turning on Vercel Authentication for production would break that path, so decide deliberately.
+
+## CI
+
+`.github/workflows/ci.yml` runs `npm ci`, `npm test`, `npm run typecheck`, `npm run build` on pushes to `main` and `cursor/**` and on every PR, with stub env values so module imports resolve. It does not deploy.
+
+## Agent note
+
+Branches are merged into `main` through PRs; nothing is force-pushed. `cursor/*` tips on the remote are historical and either contained in `main` or superseded. Older notes told agents to mirror an "Origin" remote first — that remote does not exist for this project.

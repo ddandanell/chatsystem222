@@ -4,9 +4,11 @@ Project docs for the myCHEF operations console (decision ledger, inbox desk, kno
 
 ## Repository
 
-- **GitHub (canonical):** [numini-co/inbox-mychef](https://github.com/numini-co/inbox-mychef)
-- **Preferred ship tip:** `cursor/decision-ledger-console-d800`
+- **GitHub (canonical):** [ddandanell/chatsystem222](https://github.com/ddandanell/chatsystem222), branch `main`. There is no deploy branch; every ship tip is merged into `main`.
+- **Stale, do not follow:** `numini-co/inbox-mychef` and `cursor/decision-ledger-console-d800`. Verified absent on 2026-11-01.
+- **Vercel project:** `prj_AIYNRUT5LXDLRRoF2lasAgYeUGtH` (`chatsystem`); production domain `https://console.mychef.id`; alias `https://chatsystem-sooty.vercel.app`.
 - **Deploy:** [deploy/github-vercel.md](./deploy/github-vercel.md)
+- **Never set `OPERATOR_BOOTSTRAP_PASSWORD` in the production project** — see the warning in the deploy doc.
 
 ## Start here
 
