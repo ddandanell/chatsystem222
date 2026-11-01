@@ -216,7 +216,8 @@ export default async function DashboardPage({
               <Link
                 key={group}
                 href={`/${slug}/knowledge?group=${group}`}
-                className="rounded-full border px-3 py-1 text-sm"
+                data-tap
+                className="inline-flex min-h-8 items-center rounded-full border px-3 py-1 text-sm"
               >
                 {group} · {count}
               </Link>
@@ -230,7 +231,10 @@ export default async function DashboardPage({
           <ul className="flex flex-col gap-2">
             {recent.rows.slice(0, 6).map((row) => (
               <li key={row.id}>
-                <Link href={`/${slug}/inbox/${row.id}`} className="text-sm">
+                <Link
+                  href={`/${slug}/inbox/${row.id}`}
+                  className="flex min-h-11 items-center gap-1 text-sm"
+                >
                   <span className="font-medium">{row.name ?? "Contact"}</span>
                   <span className="text-muted-foreground"> · {excerpt(row.inbound ?? "No inbound text", 90)}</span>
                 </Link>

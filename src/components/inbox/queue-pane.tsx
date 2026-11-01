@@ -105,6 +105,7 @@ export function QueuePane({
             <Link
               key={item.id}
               href={hrefFor({ filter: item.id, page: 1, id: null })}
+              data-tap
               className={cn(
                 "inline-flex h-7 items-center rounded-md px-2.5 text-xs transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
                 filter === item.id

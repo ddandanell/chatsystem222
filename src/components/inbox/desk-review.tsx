@@ -100,6 +100,7 @@ function dayLabel(value: Date | string): string {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "Unknown date";
   return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kuala_Lumpur",
     weekday: "short",
     day: "numeric",
     month: "short",
@@ -116,11 +117,19 @@ function initials(name: string | null): string {
     .join("");
 }
 
+function sourceIsApproved(
+  id: string,
+  knowledgeStatus: Record<string, string>,
+): boolean {
+  return knowledgeStatus[id] === "approved";
+}
+
 type ContextTab = "client" | "why";
 
 function ContextPanel({
   conversation,
   knowledgeTitles,
+  knowledgeStatus,
   contextTab,
   setContextTab,
   editing,
@@ -143,6 +152,7 @@ function ContextPanel({
 }: {
   conversation: DeskConversation;
   knowledgeTitles: Record<string, string>;
+  knowledgeStatus: Record<string, string>;
   contextTab: ContextTab;
   setContextTab: (tab: ContextTab) => void;
   editing: boolean;
@@ -257,26 +267,45 @@ function ContextPanel({
                 <p className="text-muted-foreground">No sources cited yet.</p>
               ) : (
                 <ul className="flex flex-col gap-2">
-                  {conversation.draft?.sources.map((source) => (
-                    <li key={source.id}>
-                      <button
-                        type="button"
-                        className="text-left text-sm underline-offset-2 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                        onClick={() =>
-                          setSourceOpen((prev) => (prev === source.id ? null : source.id))
-                        }
-                      >
-                        {knowledgeTitles[source.id] ?? source.title}
-                      </button>
-                      {sourceOpen === source.id ? (
-                        <p className="mt-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
-                          Open Knowledge for the full rule. Id: {source.id}
-                        </p>
-                      ) : null}
-                    </li>
-                  ))}
+                  {conversation.draft?.sources.map((source) => {
+                    const approved = sourceIsApproved(source.id, knowledgeStatus);
+                    return (
+                      <li key={source.id} className="flex flex-col gap-1">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            className="text-left text-sm underline-offset-2 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                            onClick={() =>
+                              setSourceOpen((prev) => (prev === source.id ? null : source.id))
+                            }
+                          >
+                            {knowledgeTitles[source.id] ?? source.title}
+                          </button>
+                          {approved ? null : (
+                            <Badge variant="outline" className="text-destructive">
+                              {knowledgeStatus[source.id] ?? "unknown"} · not approved
+                            </Badge>
+                          )}
+                        </span>
+                        {sourceOpen === source.id ? (
+                          <p className="mt-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
+                            Open Knowledge for the full rule. Id: {source.id}
+                          </p>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
+              {conversation.draft?.sources.some(
+                (source) => !sourceIsApproved(source.id, knowledgeStatus),
+              ) ? (
+                <p className="rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1 text-xs text-destructive">
+                  This draft is older than the approval gate. The sources marked
+                  &ldquo;not approved&rdquo; are historical citations, not myCHEF policy. Do not
+                  approve the reply on their authority.
+                </p>
+              ) : null}
             </div>
 
             <Separator />
@@ -372,6 +401,7 @@ export function DeskReview({
   conversation,
   nextId,
   knowledgeTitles,
+  knowledgeStatus,
   metrics,
   draftError: initialDraftError = null,
 }: {
@@ -379,6 +409,7 @@ export function DeskReview({
   conversation: DeskConversation;
   nextId: string | null;
   knowledgeTitles: Record<string, string>;
+  knowledgeStatus: Record<string, string>;
   metrics: ContactResponseMetrics;
   draftError?: string | null;
 }) {
@@ -544,6 +575,7 @@ export function DeskReview({
   const contextProps = {
     conversation,
     knowledgeTitles,
+    knowledgeStatus,
     contextTab,
     setContextTab,
     editing,
@@ -595,6 +627,7 @@ export function DeskReview({
               variant="ghost"
               className="lg:hidden"
               render={<Link href={`/${slug}/inbox`} />}
+              nativeButton={false}
             >
               Queue
             </Button>
@@ -679,9 +712,33 @@ export function DeskReview({
                         <Badge variant="outline">Escalate flagged</Badge>
                       ) : null}
                       {conversation.draft.sources[0] ? (
-                        <Badge variant="outline">
+                        <Badge
+                          variant="outline"
+                          className={
+                            sourceIsApproved(
+                              conversation.draft.sources[0].id,
+                              knowledgeStatus,
+                            )
+                              ? undefined
+                              : "text-destructive"
+                          }
+                          title={
+                            sourceIsApproved(
+                              conversation.draft.sources[0].id,
+                              knowledgeStatus,
+                            )
+                              ? "Approved source"
+                              : "Historical citation. This source is not approved."
+                          }
+                        >
                           {knowledgeTitles[conversation.draft.sources[0].id] ??
                             conversation.draft.sources[0].title}
+                          {sourceIsApproved(
+                            conversation.draft.sources[0].id,
+                            knowledgeStatus,
+                          )
+                            ? null
+                            : " · unapproved"}
                         </Badge>
                       ) : null}
                     </div>

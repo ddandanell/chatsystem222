@@ -128,3 +128,21 @@
     @apply font-sans;
   }
 }
+
+/*
+ * Phone tap floor: every primary control is at least 44px tall below the desktop
+ * breakpoint. Measured on the built app at 390x844; the header used to ship
+ * 28px links and 32px inputs. Desktop density is unchanged.
+ */
+@media (max-width: 1023px) {
+  [data-slot="button"],
+  [data-slot="input"],
+  [data-slot="tabs-trigger"],
+  [data-slot="select-trigger"],
+  [data-tap],
+  a[class*="group/button"],
+  button[class*="group/button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

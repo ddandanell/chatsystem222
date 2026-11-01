@@ -400,8 +400,12 @@ export async function getConversation(id: string) {
 }
 
 /** Create a draft on open, or refresh stale drafts missing why/confidence. */
-export async function ensureDraftForConversation(conversationId: string, authorId: string) {
-  const conversation = await getConversation(conversationId);
+export async function ensureDraftForConversation(
+  conversationId: string,
+  authorId: string,
+  preloaded?: Awaited<ReturnType<typeof getConversation>>,
+) {
+  const conversation = preloaded ?? (await getConversation(conversationId));
   if (!conversation) return { ok: false as const, error: "That conversation is not in this workspace." };
   if (conversation.decided) {
     return { ok: false as const, error: "This conversation already has a recorded decision." };
@@ -411,7 +415,12 @@ export async function ensureDraftForConversation(conversationId: string, authorI
     !conversation.draft.why &&
     conversation.draft.confidence == null;
   if (conversation.draft && !staleMeta) {
-    return { ok: true as const, created: false as const, draft: conversation.draft };
+    return {
+      ok: true as const,
+      created: false as const,
+      draft: conversation.draft,
+      conversation,
+    };
   }
   const drafted = await draftForConversation(conversationId, authorId);
   if (!drafted.ok) return drafted;
@@ -420,6 +429,7 @@ export async function ensureDraftForConversation(conversationId: string, authorI
     ok: true as const,
     created: true as const,
     draft: refreshed?.draft ?? null,
+    conversation: refreshed ?? conversation,
     error: refreshed?.draft ? undefined : "Draft was written but could not be reloaded.",
   };
 }
@@ -955,6 +965,8 @@ export type StoredKnowledge = {
   title: string;
   content: string;
   project_id: string;
+  /** approved | pending | retired. Legacy drafts can still cite a pending row. */
+  status: string;
   kind: "position" | "playbook";
   /** Seven-group filing value, or "unclassified" when nothing matches. Never silently defaulted. */
   group: KnowledgeGroupFilter;
@@ -967,8 +979,9 @@ export async function listStoredKnowledge(): Promise<StoredKnowledge[]> {
     content: string;
     project_id: string;
     scope: string | null;
+    status: string;
   }>(
-    `select id, title, content, project_id, scope
+    `select id, title, content, project_id, scope, status
      from mychef_inbox.knowledge
      where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')
      order by title`,
