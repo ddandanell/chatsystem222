@@ -20,7 +20,7 @@ import {
   type ContactFacts,
 } from "@/lib/contact-tags";
 import { localStructuredDraft } from "@/lib/draft";
-import { groupForTitle, type KnowledgeGroup } from "@/lib/knowledge-groups";
+import { groupForRow, type KnowledgeGroup, type KnowledgeGroupFilter } from "@/lib/knowledge-groups";
 import { PROVIDER_LABELS, PROVIDERS, type Provider } from "@/lib/providers";
 import {
   KNOWLEDGE_COUNTS_SQL,
@@ -958,7 +958,8 @@ export type StoredKnowledge = {
   content: string;
   project_id: string;
   kind: "position" | "playbook";
-  group: KnowledgeGroup;
+  /** Seven-group filing value, or "unclassified" when nothing matches. Never silently defaulted. */
+  group: KnowledgeGroupFilter;
 };
 
 export async function listStoredKnowledge(): Promise<StoredKnowledge[]> {
@@ -967,8 +968,9 @@ export async function listStoredKnowledge(): Promise<StoredKnowledge[]> {
     title: string;
     content: string;
     project_id: string;
+    scope: string | null;
   }>(
-    `select id, title, content, project_id
+    `select id, title, content, project_id, scope
      from mychef_inbox.knowledge
      where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')
      order by title`,
@@ -977,7 +979,7 @@ export async function listStoredKnowledge(): Promise<StoredKnowledge[]> {
   return rows.map((row) => ({
     ...row,
     kind: kindForTitle(row.title),
-    group: groupForTitle(row.title, row.project_id),
+    group: groupForRow({ title: row.title, scope: row.scope, project_id: row.project_id }),
   }));
 }
 
@@ -993,8 +995,9 @@ export async function listKnowledgeDrafts() {
     status: string;
     project_id: string;
     source: string;
+    scope: string | null;
   }>(
-    `select id, title, status, project_id, source
+    `select id, title, status, project_id, source, scope
      from mychef_inbox.knowledge
      where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')
      order by status, title`,
@@ -1002,7 +1005,7 @@ export async function listKnowledgeDrafts() {
   );
   return rows.map((row) => ({
     ...row,
-    group: groupForTitle(row.title, row.project_id),
+    group: groupForRow({ title: row.title, scope: row.scope, project_id: row.project_id }),
   }));
 }
 

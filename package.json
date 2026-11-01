@@ -17,7 +17,8 @@
     "verify:rls": "node --env-file=.env.local --import tsx scripts/verify-rls.ts",
     "test": "node --import tsx --test tests/*.test.ts",
     "verify:retrieval": "node --env-file=.env.local --import tsx scripts/verify-retrieval-policy.ts",
-    "verify:isolation": "node --env-file=.env.local --import tsx scripts/verify-isolation.ts"
+    "verify:isolation": "node --env-file=.env.local --import tsx scripts/verify-isolation.ts",
+    "verify:groups": "node --env-file=.env.local --import tsx scripts/verify-groups.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
