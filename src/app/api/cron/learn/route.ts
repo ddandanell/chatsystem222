@@ -1,5 +1,11 @@
 /**
  * Nightly learning pass. Reads decision_records and writes pending knowledge only. Do not auto-send.
+ *
+ * GET /api/cron/learn with Authorization: Bearer CRON_SECRET.
+ * Runs runLearningPass against mychef_inbox (decision_records, feedback, knowledge, audit_log).
+ * Idempotent: each clustered decision gets one `learn:processed` audit row, so a second pass the same
+ * night proposes nothing. Never auto-activates a snippet and never sends.
+ * Docs: documentation/cbls-architecture.md, documentation/learning-queue.md.
  */
 import { timingSafeEqual } from "node:crypto";
 import { runLearningPass } from "@/data/mychef-store";

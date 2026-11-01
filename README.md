@@ -182,15 +182,9 @@ A signed-in reviewer uploads a ChatGPT project export (`.zip`, `.json`, or `.mar
 
 `POST /api/webhooks/ghl` accepts a JSON message. If `GHL_WEBHOOK_SECRET` is set, the request must send the same value in `x-ghl-secret` or `Authorization: Bearer`. A message body creates or updates a conversation and a pending local draft. The route never calls a send API. A body that does not fit the inbox tables is written to `webhook_receipts` and listed at `/mychef/settings/webhooks`. Automatic sending stays off.
 
-## Learning pass
+## Learning Queue (CBLS)
 
-On the dashboard, Run learning pass clusters decision records from the last 30 days by reason. Proposals show up in the learning queue. Knowledge-gap reasons become pending `learning-pass` rows. Other reasons become pending `ledger-rule` rows. `good_as_drafted` is skipped. Approved and retired rows are not changed. `GET /api/cron/learn` runs the same pass when `Authorization: Bearer` matches `CRON_SECRET`. Vercel Cron calls that path daily at 02:00 Kuala Lumpur (18:00 UTC). The pass does not activate rules and does not send.
-
-## Auto-pilot
-
-Page: `/mychef/settings/autopilot`. Code: `src/app/[workspace]/settings/autopilot` and `src/lib/autopilot.ts`.
-
-The switch is **off** until an owner turns it on. The switch and confidence threshold are stored on `mychef_inbox.integration_connections` id `autopilot`. That row is not a provider key. Existing provider and GoHighLevel rows are not updated. While the switch is off, every draft stays pending. While it is on, a draft whose confidence meets the threshold and does not need a person is recorded as `auto_sent_candidate`. The banner says sending is not connected. No send call is made.
+Saving an **Edited** (or learnable Reject) review in the inbox proposes a Learning Queue card with the AI draft, the human reply and the reason as evidence. **Run learning pass** and the nightly cron cluster any remaining unprocessed edits the same way. Knowledge-gap reasons become pending `learning-pass` rows; other reasons become pending `ledger-rule` rows. Cards group by Missing Knowledge, Tone, Outdated and Suggested. **Approve Snippet** stores the case as `situational` knowledge; **Dismiss** retires it. The curated library is never overwritten. Idempotency uses `audit_log` action `learn:processed` per decision (no DDL). `GET /api/cron/learn` requires `Authorization: Bearer` matching `CRON_SECRET` and runs daily at 02:00 Asia/Kuala_Lumpur (18:00 UTC). Nothing auto-activates and nothing is sent.
 
 ## What this slice does not do
 

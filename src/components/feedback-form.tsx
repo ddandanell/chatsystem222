@@ -13,14 +13,6 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -46,8 +38,11 @@ export function FeedbackForm({
   const [state, formAction, pending] = useActionState(action, null);
   const [decision, setDecision] = useState<HumanDecision>("accepted");
   const [finalText, setFinalText] = useState(draft);
+  const [reason, setReason] = useState("good_as_drafted");
   const cited = new Set(sources.map((source) => source.id));
   const missingOptions = catalog.filter((doc) => !cited.has(doc.id));
+  const needsLearningReason =
+    decision === "edited" || decision === "rejected" || decision === "escalated";
 
   return (
     <form
@@ -82,7 +77,12 @@ export function FeedbackForm({
                 next === "escalated"
               ) {
                 setDecision(next);
-                if (next === "accepted") setFinalText(draft);
+                if (next === "accepted") {
+                  setFinalText(draft);
+                  setReason("good_as_drafted");
+                } else if (reason === "good_as_drafted") {
+                  setReason("missing_knowledge");
+                }
               }
             }}
             className="flex flex-wrap"
@@ -105,30 +105,48 @@ export function FeedbackForm({
             required={decision === "accepted" || decision === "edited"}
           />
           <FieldDescription>
-            Accepted keeps the draft. Edited sends this text instead. Rejected
-            and escalated send nothing.
+            Accepted keeps the draft. Edited records a correction for the Learning
+            Queue. Rejected and escalated send nothing.
           </FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="reason_code">Reason code</FieldLabel>
-          <Select name="reason_code" defaultValue="good_as_drafted" required>
-            <SelectTrigger id="reason_code" className="w-full">
-              <SelectValue placeholder="Choose a reason" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {REASON_CODES.map((item) => (
-                  <SelectItem key={item.code} value={item.code}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          <select
+            id="reason_code"
+            name="reason_code"
+            required
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none"
+          >
+            {REASON_CODES.filter(
+              (item) => !needsLearningReason || item.code !== "good_as_drafted",
+            ).map((item) => (
+              <option key={item.code} value={item.code}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          {needsLearningReason ? (
+            <FieldDescription>
+              Required for learning. Your why and the AI vs human diff land on the
+              Learning Queue for Approve Snippet or Dismiss.
+            </FieldDescription>
+          ) : null}
         </Field>
         <Field>
           <FieldLabel htmlFor="rationale">Why this reply</FieldLabel>
-          <Textarea id="rationale" name="rationale" rows={3} required />
+          <Textarea
+            id="rationale"
+            name="rationale"
+            rows={3}
+            required
+            placeholder={
+              needsLearningReason
+                ? "What should the next similar draft do instead?"
+                : undefined
+            }
+          />
         </Field>
         <Field>
           <FieldLabel htmlFor="why_not">Why not the alternative</FieldLabel>
