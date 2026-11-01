@@ -1,6 +1,5 @@
-# Build check for GitHub. Production deploys come from Vercel Git integration
-# on https://github.com/numini-co/inbox-mychef (preferred tip:
-# cursor/decision-ledger-console-d800). This workflow does not deploy.
+# Build check for GitHub. Production deploys come from the Vercel Git integration
+# on https://github.com/ddandanell/chatsystem222, branch main. This workflow does not deploy.
 name: CI
 
 on:
@@ -34,4 +33,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # typegen first: PageProps/LayoutProps only exist after Next generates .next/types,
+      # so a bare tsc --noEmit fails on a clean checkout.
+      - run: npm run typecheck
       - run: npm run build

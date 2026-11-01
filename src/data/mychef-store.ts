@@ -32,17 +32,12 @@ import {
   type QueueType,
 } from "@/lib/learning-queue";
 import { PROVIDER_LABELS, PROVIDERS, type Provider } from "@/lib/providers";
+import { rankKnowledgeFromDatabase } from "@/lib/knowledge-retrieval";
 import {
-  KNOWLEDGE_COUNTS_SQL,
-  KNOWLEDGE_RETRIEVAL_SQL,
   MYCHEF_RETRIEVAL_SCOPE,
   RETRIEVAL_POLICY_VERSION,
   kindForTitle,
-  rankKnowledgeRows,
   retrievalNotice,
-  summarizeExcludedGroups,
-  type KnowledgeCandidate,
-  type KnowledgeCountGroup,
 } from "@/lib/retrieval-policy";
 import type { HumanDecision, Outcome } from "@/lib/reason-codes";
 import type { SourceRef } from "@/db/schema";
@@ -485,15 +480,8 @@ export async function getRecordedDecision(id: string) {
  * query, so a reviewer is told what was withheld without loading pending content.
  */
 export async function rankKnowledge(inbound: string, tagHint = "") {
-  const [docs, groups] = await Promise.all([
-    query<KnowledgeCandidate>(KNOWLEDGE_RETRIEVAL_SQL, [MYCHEF_WORKSPACE]),
-    query<KnowledgeCountGroup>(KNOWLEDGE_COUNTS_SQL, [MYCHEF_WORKSPACE]),
-  ]);
-  const ranked = rankKnowledgeRows(docs, inbound, tagHint, MYCHEF_RETRIEVAL_SCOPE);
-  return {
-    ...ranked,
-    excluded: summarizeExcludedGroups(groups, MYCHEF_RETRIEVAL_SCOPE),
-  };
+  // One implementation, shared with the GHL webhook (see src/lib/knowledge-retrieval.ts).
+  return rankKnowledgeFromDatabase(appPool, inbound, tagHint);
 }
 
 type DraftHint = string | null | { tagHint?: string };

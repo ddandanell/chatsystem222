@@ -1,27 +1,47 @@
 /**
  * Parses a GHL payload into mychef_inbox rows and a local draft. Do not auto-send.
+ *
+ * Retrieval: this path uses the same approval-gated, project-scoped knowledge read as the
+ * interactive draft (`rankKnowledgeFromDatabase`), and records the retrieval policy version and the
+ * withheld counts in `drafts.prompt_version`. It previously selected knowledge by workspace alone,
+ * which on the live database meant a reviewer could be shown pending and other-project text.
+ *
+ * Idempotency: one inbound message id produces one message row and one draft. A repeated delivery
+ * returns `duplicate: true` and creates nothing.
  */
 import { createHash } from "node:crypto";
 import type pg from "pg";
 import { inboundFromGhl } from "@/channels/inbound";
 import { recordAutoSendCandidateIfEnabled } from "@/lib/autopilot";
 import { localStructuredDraft } from "@/lib/draft";
+import { rankKnowledgeFromDatabase } from "@/lib/knowledge-retrieval";
+import {
+  MYCHEF_RETRIEVAL_SCOPE,
+  RETRIEVAL_POLICY_VERSION,
+  retrievalNotice,
+} from "@/lib/retrieval-policy";
 import { authorizeWebhook, type WebhookAuthResult } from "@/lib/webhook-auth";
 
 const WORKSPACE = "mychef";
+
+/** At most four quoted sources, the same ceiling the interactive draft uses. */
+const MAX_SOURCES = 4;
 
 export type GhlResult = {
   status: number;
   eventKey: string;
   fit: boolean;
   draftCreated: boolean;
+  /** The message was already stored: this delivery added nothing. */
+  duplicate: boolean;
   conversationId: string | null;
   detail: string;
 };
 
-export function authorizeGhl(headers: Headers): WebhookAuthResult {
-  // Fail closed. A missing secret is a configuration fault, not an open door.
-  return authorizeWebhook(headers);
+export function authorizeGhl(headers: Headers, rawBody?: string): WebhookAuthResult {
+  // Fail closed. A missing secret is a configuration fault, not an open door. The raw body is
+  // passed through so a signature (HMAC over `${timestamp}.${rawBody}`) can be verified.
+  return authorizeWebhook(headers, { rawBody });
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -67,8 +87,13 @@ function safeId(value: string, prefix: string): string {
   return `${prefix}${hash}`;
 }
 
-function kindForTitle(title: string): "position" | "playbook" {
-  return /TEMPLATE|TONE|QUICK_START|SYSTEM_PROMPT|README/i.test(title) ? "playbook" : "position";
+/**
+ * Receipt key for a delivery that failed. It is derived from the body, so a sender that retries the
+ * same event updates one row instead of appending a new one per attempt (the previous key used
+ * `Date.now()` and grew without bound).
+ */
+export function errorReceiptKey(rawBody: string): string {
+  return `ghl:error-${createHash("sha256").update(rawBody, "utf8").digest("hex").slice(0, 32)}`;
 }
 
 async function writeReceipt(
@@ -99,6 +124,7 @@ export async function applyGhlPayload(
       verified,
       fit: false,
       draftCreated: false,
+      duplicate: false,
       detail: "No message body was found. Nothing was drafted and nothing was sent.",
     });
     return {
@@ -106,6 +132,7 @@ export async function applyGhlPayload(
       eventKey,
       fit: false,
       draftCreated: false,
+      duplicate: false,
       conversationId: null,
       detail: "No message body was found.",
     };
@@ -141,23 +168,39 @@ export async function applyGhlPayload(
     [WORKSPACE, messageId, conversationId, parsed.body.slice(0, 8000)],
   );
 
+  const duplicate = (inserted.rowCount ?? 0) === 0;
   let draftCreated = false;
-  if ((inserted.rowCount ?? 0) > 0) {
-    const docs = await client.query<{ id: string; title: string; content: string }>(
-      `select id, title, content from mychef_inbox.knowledge
-       where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')`,
-      [WORKSPACE],
-    );
-    const knowledge = docs.rows.slice(0, 8).map((doc) => ({
-      chunkId: doc.id,
-      orgId: WORKSPACE,
-      sourceId: doc.id,
-      title: doc.title,
-      kind: kindForTitle(doc.title),
-      excerpt: doc.content.slice(0, 700),
-      score: doc.title.toLowerCase().includes("pric") ? 0.4 : 0.2,
+
+  if (!duplicate) {
+    // Same gate as the interactive draft: approved, in this project (or approved global), and never
+    // a candidate source. rankKnowledgeRows() re-checks each row even though the SQL already filters.
+    const ranked = await rankKnowledgeFromDatabase(client, parsed.body);
+    const knowledge = ranked.eligible.slice(0, MAX_SOURCES).map((item) => ({
+      chunkId: item.doc.id,
+      orgId: MYCHEF_RETRIEVAL_SCOPE.workspaceId,
+      sourceId: item.doc.id,
+      title: item.doc.title,
+      kind: item.kind,
+      excerpt: item.doc.content.slice(0, 700),
+      score: item.score,
     }));
     const draft = localStructuredDraft(parsed.body, knowledge, []);
+    const why = retrievalNotice(ranked) ?? draft.why;
+    const sourcePayload = {
+      sources: draft.sourceRefs,
+      confidence: draft.confidence,
+      why,
+      whyNot: draft.whyNot,
+      escalate: draft.escalate,
+      retrieval: {
+        policyVersion: RETRIEVAL_POLICY_VERSION,
+        workspaceId: MYCHEF_RETRIEVAL_SCOPE.workspaceId,
+        projectId: MYCHEF_RETRIEVAL_SCOPE.projectId,
+        path: "webhook",
+        eligible: ranked.eligible.length,
+        excluded: ranked.excluded,
+      },
+    };
     await client.query(
       `insert into mychef_inbox.drafts
          (workspace_id, conversation_id, body, author_id, kind, based_on_message_id, model, source_ids, prompt_version)
@@ -167,8 +210,8 @@ export async function applyGhlPayload(
         conversationId,
         draft.draftText,
         messageId,
-        JSON.stringify(draft.sourceRefs),
-        JSON.stringify({ confidence: draft.confidence, why: draft.why, escalate: draft.escalate, channel: inbound.channel }),
+        JSON.stringify(sourcePayload),
+        JSON.stringify({ ...sourcePayload, channel: inbound.channel }),
       ],
     );
     await client.query("savepoint autopilot");
@@ -188,6 +231,7 @@ export async function applyGhlPayload(
           verified,
           fit: true,
           draftCreated: true,
+          duplicate: false,
           conversationId,
           detail: "Inbound stored. Auto-pilot marked auto_sent_candidate. Sending is not connected.",
           excerpt: parsed.body.slice(0, 160),
@@ -197,6 +241,7 @@ export async function applyGhlPayload(
           eventKey,
           fit: true,
           draftCreated: true,
+          duplicate: false,
           conversationId,
           detail: "Stored. Sending is not connected.",
         };
@@ -212,10 +257,11 @@ export async function applyGhlPayload(
     verified,
     fit: true,
     draftCreated,
+    duplicate,
     conversationId,
-    detail: draftCreated
-      ? "Inbound stored and a local draft is pending. Nothing was sent."
-      : "This message was already stored. No second draft was created. Nothing was sent.",
+    detail: duplicate
+      ? "This message was already stored. No second draft was created. Nothing was sent."
+      : "Inbound stored and a local draft is pending. Nothing was sent.",
     excerpt: parsed.body.slice(0, 160),
   });
 
@@ -224,7 +270,8 @@ export async function applyGhlPayload(
     eventKey,
     fit: true,
     draftCreated,
+    duplicate,
     conversationId,
-    detail: "Stored. Nothing was sent.",
+    detail: duplicate ? "Already stored. No second draft was created." : "Stored. Nothing was sent.",
   };
 }
