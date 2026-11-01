@@ -16,6 +16,7 @@
     "db:setup": "node --env-file=.env.local --import tsx src/db/migrate.ts && node --env-file=.env.local --import tsx src/db/seed.ts",
     "verify:rls": "node --env-file=.env.local --import tsx scripts/verify-rls.ts",
     "test": "node --import tsx --test tests/*.test.ts",
+    "typecheck": "next typegen && tsc --noEmit",
     "verify:retrieval": "node --env-file=.env.local --import tsx scripts/verify-retrieval-policy.ts",
     "verify:isolation": "node --env-file=.env.local --import tsx scripts/verify-isolation.ts",
     "verify:groups": "node --env-file=.env.local --import tsx scripts/verify-groups.ts"
