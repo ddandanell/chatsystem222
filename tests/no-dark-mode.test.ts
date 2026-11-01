@@ -59,13 +59,18 @@ test("globals.css is smaller than the 5,238 bytes it replaced", () => {
 });
 
 test("the contrast baseline tokens are exactly where they were", () => {
-  // body #fcfaf6, card #ffffff, control edge #e5e5e5, chip text #685b53 — the four values the
-  // re-check fails on if they move.
+  // body #fcfaf6, card #ffffff, divider #e5e5e5, chip text #685b53 — the values the re-check fails
+  // on if they move.
+  //
+  // --input moved on purpose in UX-0202: #e5e5e5 was 1.21:1 on the page, below the 3:1 a control
+  // boundary needs, so the field edge is now #8c847f (3.51:1). --border deliberately did not move;
+  // --input is the token a field is drawn with (border-input in input/textarea/select/checkbox),
+  // --border is the divider. tests/contrast-tokens.test.ts recomputes both from this file.
   const anchors: [string, string][] = [
     ["--background", "oklch(0.985 0.006 95)"],
     ["--card", "oklch(0.997 0.003 95)"],
     ["--border", "oklch(0.922 0 0)"],
-    ["--input", "oklch(0.922 0 0)"],
+    ["--input", "oklch(0.62 0.012 55)"],
     ["--muted-foreground", "oklch(0.48 0.02 55)"],
   ];
   const root = css.slice(css.indexOf(":root {"), css.indexOf("}", css.indexOf(":root {")));
