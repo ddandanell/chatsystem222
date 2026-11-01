@@ -12,38 +12,43 @@ Mental model: LLM = reasoning, GHL (later WhatsApp) = channel adapters, MCP/tool
 
 | Path | Purpose |
 |------|---------|
-| [Project Notes](cursor.agent://project/notes) `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/notes.md` | Live task tracker (IMC-*) |
-| `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/preferences.md` | Lasting product preferences |
-| `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/todo.md` | Near-term ordered steps |
-| `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/roadmap.md` | Master phases 1–5 (3–5 not started) |
-| `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/agent-spec.md` | DDL, RLS, reason codes, learning loop |
-| `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/technical-blueprint.md` | Stack, BYOK, multi-tenant |
-| `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/architecture.md` | Original four-store foundation |
-| `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md` | 3-pane inbox UX |
-| `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/contact-response-desk.md` | Contact open: timers, always-on AI draft, correct→learn |
-| `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-design-system.md` | Strict shadcn three-pane desk contract + agent prompt |
-| `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/cbls-architecture.md` | Case-Based Learning System |
-| `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/learning-queue.md` | Learning Queue operator notes (shipped) |
+| `documentation/todo.md` | Near-term ordered steps |
+| `documentation/roadmap.md` | Master phases 1–5 (3–5 not started) |
+| `documentation/agent-spec.md` | DDL, RLS, reason codes, learning loop |
+| `documentation/technical-blueprint.md` | Stack, BYOK, multi-tenant |
+| `documentation/architecture.md` | Original four-store foundation |
+| `documentation/inbox-ux.md` | 3-pane inbox UX |
+| `documentation/contact-response-desk.md` | Contact open: timers, always-on AI draft, correct→learn |
+| `documentation/inbox-design-system.md` | Strict shadcn three-pane desk contract + agent prompt |
+| `documentation/cbls-architecture.md` | Case-Based Learning System |
+| `documentation/learning-queue.md` | Learning Queue operator notes (shipped) |
+| `documentation/retrieval-policy.md` | What a draft may quote: approval gate and project scope |
+| `documentation/isolation-evidence.md` | How isolation is measured; strict gate for RLS work |
+| `documentation/knowledge-groups.md` | Seven knowledge groups plus `unclassified` |
 | This file | Agent handoff |
 
-## Code and branches (worker VMs)
+The old `/cursor/stores/bc-5928a827-…` paths are gone. If a document or code comment still points there,
+treat the link as dead and use the table above.
 
-Primary agent: `bc-39d8efad-3cd6-5f36-b9c7-7e050c1cd800` Decision ledger console. Branch: `cursor/decision-ledger-console-d800`. Dev server often at `http://127.0.0.1:4317`. Turns may be cancelled when the coordinator forks; check GetAgentStatus before assuming idle.
+## Code and branches
 
-Parallel forks (may have their own branches; some turns have ERROR’d and been retried):
+- Canonical repo: `ddandanell/chatsystem222`, branch `main`. One mainline; no Cursor worker checkouts.
+- Local run: `npm ci`, then `npm run dev` (port 4317).
+- Change path: `fix/…` branch → `npm test` → `next typegen && npx tsc --noEmit` → `npm run build` → PR → merge on the head SHA.
+- `npm run lint` currently fails on `main` with three pre-existing `react-hooks/set-state-in-effect` errors
+  (two in `inbox-cockpit.tsx`, one in `desk-review.tsx`). That is release-gate debt, not a new regression.
+- Do not commit secrets. The app role is `mychef_runtime`; schema changes need a human with owner credentials.
 
-- `bc-e2dc9f64-6f4f-54e5-abd6-6b250f73edba` Inbox three-pane → `cursor/inbox-three-pane-ui`
-- `bc-359fc7af-08fc-549d-b955-a334a34a2566` Learning queue → `cursor/learning-queue-cbls` (queue types, AI/human diff, Approve→situational / Dismiss, cron+manual, no auto-send)
-- `bc-d2dac56d-7c60-509e-94a1-40ce0f771ec3` Welcome login and keys → `cursor/welcome-login-keys`
-
-Repo is an agent_temp Origin checkout; PR creation via ManagePullRequest may fail. Push branches anyway. Do not commit secrets.
 
 ## Database (Neon mychef)
 
 - Host pattern: `ep-bitter-fire-azf4encj` ap-southeast-1, database `mychef`.
 - App role: `mychef_runtime` — **not** owner; cannot CREATE TABLE / CREATE EXTENSION. Schema changes need `mychef_owner` connection string from the user.
 - Schema in use: `mychef_inbox` (not public).
-- Important counts when last inventoried: 1 workspace (`mychef` / myCHEF), 12 knowledge, 782 contacts, 784 conversations (~115 needs_reply), 12343 messages, decision_records/feedback often empty until reviews happen.
+- Counts on 1 Nov 2026 (read-only, role `mychef_runtime`): 1 workspace (`mychef`), 5 projects (`mychef` plus four
+  foreign projects), 5 areas, 784 contacts, 786 conversations (114 in the needs-review queue), 12,353 messages,
+  14 knowledge rows (12 pending, 2 retired, **0 approved**), 0 knowledge revisions, 4 drafts, 2 decision records,
+  2 feedback, 9 audit rows, 0 api_usage rows.
 - Console should filter by `workspace_id` for that workspace. Forced RLS from agent-spec could not be installed without owner rights.
 - Connection string belongs only in gitignored `.env.local` (DATABASE_URL). Never commit it.
 - Neon Auth URLs exist separately (auth + JWKS); those are not the Postgres URL.
@@ -85,8 +90,8 @@ Every non-trivial module should start with a short file header: purpose, tables 
 
 ## How to resume in 5 minutes
 
-1. Read this file + notes.md + preferences.md.
-2. Attach to worker desktop or pull latest `cursor/decision-ledger-console-d800`.
-3. Confirm `.env.local` has DATABASE_URL (not in git).
-4. `npm run dev` on uncommon port; open `/login`.
-5. Continue the highest open In Progress row in notes.md.
+1. Read this file, `todo.md`, `roadmap.md`, then `README.md` in this folder.
+2. `git clone https://github.com/ddandanell/chatsystem222`, `git checkout main`, `npm ci`.
+3. Confirm `.env.local` has DATABASE_URL (not in git) and AUTH_SECRET.
+4. `npm run dev`; open `http://127.0.0.1:4317/login` and sign in as an approved operator.
+5. Continue the highest open item in `todo.md`; keep auto-send off.

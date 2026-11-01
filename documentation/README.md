@@ -4,9 +4,15 @@ Project docs for the myCHEF operations console (decision ledger, inbox desk, kno
 
 ## Repository
 
-- **GitHub (canonical):** [numini-co/inbox-mychef](https://github.com/numini-co/inbox-mychef)
-- **Preferred ship tip:** `cursor/decision-ledger-console-d800`
+- **GitHub (canonical):** [ddandanell/chatsystem222](https://github.com/ddandanell/chatsystem222), branch `main`.
+- The old `numini-co/inbox-mychef` repository and the `cursor/decision-ledger-console-d800` branch are retired.
+  They are not readable any more and must not be named as a ship tip.
+- Work arrives on a `fix/…` branch, passes the gate, and merges to `main`; nothing ships from a Cursor store.
+- **Tests:** `npm test` (node:test via tsx). **Typecheck:** `next typegen && npx tsc --noEmit`.
+  **Lint:** `npm run lint`. **Build:** `npm run build`.
 - **Deploy:** [deploy/github-vercel.md](./deploy/github-vercel.md)
+- **State on 1 Nov 2026:** `main` = `b564f1972415f0ba7aa62d4777f25faebebeea95`; the console is **not deployed**.
+  `mychef.id` is the marketing website, not this console.
 
 ## Start here
 
