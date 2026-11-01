@@ -9,6 +9,7 @@ import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
 import { signIn, signOut } from "@/auth";
 import { usesMychefInbox } from "@/db/mode";
+import { safeCallbackTarget } from "@/lib/login-callback";
 import { ensureBootstrapOperator } from "@/lib/operators";
 
 export async function loginAction(formData: FormData) {
@@ -17,16 +18,25 @@ export async function loginAction(formData: FormData) {
     await ensureBootstrapOperator();
   }
   const email = formData.get("email");
+  // The page carries the refused deep link through the form; only an internal path is honoured, so
+  // signing in from /login?callbackUrl=/mychef/inbox?conversation=… returns to that conversation.
+  const callback = safeCallbackTarget(formData.get("callbackUrl"));
   if (usesMychefInbox()) {
     try {
       await signIn("credentials", {
         email,
         password: formData.get("password"),
-        redirectTo: "/mychef/inbox",
+        redirectTo: callback ?? "/mychef/inbox",
       });
     } catch (error) {
       if (isRedirectError(error)) throw error;
-      if (error instanceof AuthError) redirect("/login?error=1");
+      if (error instanceof AuthError) {
+        redirect(
+          callback
+            ? "/login?error=1&callbackUrl=" + encodeURIComponent(callback)
+            : "/login?error=1",
+        );
+      }
       throw error;
     }
     return;
@@ -34,7 +44,7 @@ export async function loginAction(formData: FormData) {
   await signIn("credentials", {
     email,
     name: formData.get("name"),
-    redirectTo: "/",
+    redirectTo: callback ?? "/",
   });
 }
 

@@ -32,18 +32,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { usesMychefInbox } from "@/db/mode";
+import { safeCallbackTarget } from "@/lib/login-callback";
 import { ensureBootstrapOperator } from "@/lib/operators";
 
 export const metadata = { title: "Admin login" };
 export const instant = false;
 
-async function BounceIfSignedIn() {
+async function BounceIfSignedIn({ callback }: { callback: string | null }) {
   await connection();
   if (usesMychefInbox()) {
     await ensureBootstrapOperator();
   }
   const session = await auth();
-  if (session?.user?.id) redirect("/");
+  // Already signed in: go where the deep link asked for, not to the console root.
+  if (session?.user?.id) redirect(callback ?? "/");
   return null;
 }
 
@@ -65,17 +67,20 @@ async function LoginError({
   );
 }
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const neon = usesMychefInbox();
+  const query = await searchParams;
+  // Set by the proxy when it refused a page; only an internal path is accepted.
+  const callback = safeCallbackTarget(query.callbackUrl);
 
   return (
     <main className="flex min-h-full flex-1 flex-col bg-muted/40">
       <Suspense fallback={null}>
-        <BounceIfSignedIn />
+        <BounceIfSignedIn callback={callback} />
       </Suspense>
 
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center gap-6 px-4 py-10 md:px-6 md:py-16">
@@ -137,6 +142,9 @@ export default function LoginPage({
                 <LoginError searchParams={searchParams} />
               </Suspense>
               <form id="admin-login" action={loginAction} className="flex flex-col gap-5">
+                {callback ? (
+                  <input type="hidden" name="callbackUrl" value={callback} />
+                ) : null}
                 <FieldSet>
                   <FieldLegend className="sr-only">Account</FieldLegend>
                   <FieldGroup>
@@ -186,6 +194,9 @@ export default function LoginPage({
                   <div className="flex flex-col gap-2">
                     <p className="text-sm font-medium">Seeded local sessions</p>
                     <form action={loginAction}>
+                      {callback ? (
+                        <input type="hidden" name="callbackUrl" value={callback} />
+                      ) : null}
                       <input type="hidden" name="email" value="maya@harbor-kitchen.example" />
                       <input type="hidden" name="name" value="Maya Chen" />
                       <Button type="submit" variant="outline" className="w-full justify-between">
@@ -194,6 +205,9 @@ export default function LoginPage({
                       </Button>
                     </form>
                     <form action={loginAction}>
+                      {callback ? (
+                        <input type="hidden" name="callbackUrl" value={callback} />
+                      ) : null}
                       <input type="hidden" name="email" value="jonah@northline.example" />
                       <input type="hidden" name="name" value="Jonah Hale" />
                       <Button type="submit" variant="outline" className="w-full justify-between">
