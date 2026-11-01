@@ -35,6 +35,7 @@ import {
 import {
   ensureDraftForConversation,
   getConversation,
+  getLatestDecisionForConversation,
   getRecordedDecision,
   listDeskQueue,
   listStoredKnowledge,
@@ -52,6 +53,19 @@ function parseFilter(value: string | undefined): DeskFilter {
     return value;
   }
   return "needs_review";
+}
+
+const DECISION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * CS-001: the desk is opened either from the decision list (id = decision uuid) or from the queue
+ * (id = conversation nanoid). A nanoid handed to `getRecordedDecision` was cast to uuid, threw, and
+ * the caller's catch swallowed it. Now a conversation id resolves to its newest decision, and only
+ * when that decision covers the newest inbound message — a re-opened thread renders as a thread.
+ */
+async function getSelectedDecision(id: string) {
+  if (DECISION_ID.test(id)) return getRecordedDecision(id);
+  return getLatestDecisionForConversation(id);
 }
 
 export async function MychefDesk({
@@ -73,7 +87,7 @@ export async function MychefDesk({
   let subjectHeading: string | null = null;
   const [inbox, recorded] = await Promise.all([
     listDeskQueue(filter, page, search),
-    selectedId ? getRecordedDecision(selectedId).catch(() => null) : Promise.resolve(null),
+    selectedId ? getSelectedDecision(selectedId).catch(() => null) : Promise.resolve(null),
   ]);
   const ids = inbox.rows.filter((row) => row.kind === "conversation").map((row) => row.id);
   const activeId = selectedId ?? null;
