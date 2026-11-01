@@ -20,6 +20,7 @@ import {
   type ContactFacts,
 } from "@/lib/contact-tags";
 import { localStructuredDraft } from "@/lib/draft";
+import { runConversationAgent } from "@/lib/conversation-agent";
 import { groupForRow, type KnowledgeGroup, type KnowledgeGroupFilter } from "@/lib/knowledge-groups";
 import {
   buildProposalContent,
@@ -573,6 +574,106 @@ export async function draftForConversation(
     sourceRefs: draft.sourceRefs,
   }).catch(() => ({ fired: false }));
   return { ok: true as const, draft, autoSendCandidate: auto.fired };
+}
+
+/**
+ * The conversation agent. One focused call, always a draft. Do not auto-send.
+ *
+ * Purpose: an operator presses Agent at the top of a conversation; this reads only that
+ * conversation, the approved knowledge for its project, and the operator's note, then writes the
+ * reply to mychef_inbox.drafts exactly like a local draft so the same review and approval gate
+ * applies. If no key answers, the local reply is written and the provenance says so.
+ * Specs: documentation/agent-spec.md, src/lib/conversation-agent.ts.
+ */
+export async function agentDraftForConversation(
+  conversationId: string,
+  authorId: string,
+  instruction?: string,
+) {
+  const conversation = await getConversation(conversationId);
+  if (!conversation) {
+    return { ok: false as const, error: "That conversation is not in this workspace." };
+  }
+  if (conversation.decided) {
+    return { ok: false as const, error: "This conversation already has a recorded decision." };
+  }
+  const inboundMessage = [...conversation.messages]
+    .reverse()
+    .find((message) => message.direction === "inbound");
+  const inbound = inboundMessage?.body ?? "";
+  if (!inbound.trim()) {
+    return { ok: false as const, error: "This conversation has no inbound message to answer." };
+  }
+  const tagHint = conversation.tags.join(" ");
+  const ranked = await rankKnowledge(inbound, tagHint);
+  const agent = await runConversationAgent(
+    {
+      workspaceId: MYCHEF_WORKSPACE,
+      projectId: conversation.project_id || MYCHEF_RETRIEVAL_SCOPE.projectId,
+      conversationId,
+      contactName: conversation.contact_name,
+      channel: conversation.channel,
+      status: conversation.status,
+      tags: conversation.tags,
+      contactFacts: conversation.facts ?? {},
+      messages: conversation.messages.map((message) => ({
+        id: message.id,
+        direction: message.direction,
+        body: message.body,
+        created_at: message.created_at,
+        conversation_id: conversationId,
+      })),
+      ranked: ranked.eligible,
+      instruction,
+    },
+    { orgId: MYCHEF_WORKSPACE },
+  );
+
+  const provenance = {
+    sources: agent.sourceRefs,
+    confidence: agent.confidence,
+    why: agent.why,
+    whyNot: agent.whyNot,
+    escalate: agent.escalate,
+    agent: {
+      promptVersion: agent.promptVersion,
+      provider: agent.provider,
+      model: agent.model,
+      fellBack: agent.fellBack,
+      notice: agent.notice,
+      latencyMs: agent.latencyMs,
+      instruction: instruction?.trim().slice(0, 600) || null,
+    },
+    retrieval: {
+      policyVersion: RETRIEVAL_POLICY_VERSION,
+      workspaceId: MYCHEF_RETRIEVAL_SCOPE.workspaceId,
+      projectId: MYCHEF_RETRIEVAL_SCOPE.projectId,
+      eligible: ranked.eligible.length,
+      excluded: ranked.excluded,
+    },
+  };
+
+  await query(
+    `insert into mychef_inbox.drafts
+       (workspace_id, conversation_id, body, author_id, kind, based_on_message_id, model, source_ids, prompt_version)
+     values ($1, $2, $3, $4, 'ai', $5, $6, $7::jsonb, $8)`,
+    [
+      MYCHEF_WORKSPACE,
+      conversationId,
+      agent.draftText,
+      authorId,
+      inboundMessage?.id ?? null,
+      agent.fellBack ? "local" : `${agent.provider}:${agent.model}`,
+      JSON.stringify(provenance),
+      JSON.stringify(provenance),
+    ],
+  );
+
+  return {
+    ok: true as const,
+    agent,
+    conversation: (await getConversation(conversationId)) ?? conversation,
+  };
 }
 
 function neonDecision(decision: HumanDecision): "approved" | "edited" | "rejected" {

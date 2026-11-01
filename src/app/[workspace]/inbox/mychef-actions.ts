@@ -13,6 +13,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  agentDraftForConversation,
   draftForConversation,
   proposeFromDecision,
   recordOutcome,
@@ -37,6 +38,59 @@ export async function draftConversationAction(conversationId: string): Promise<v
   await draftForConversation(conversationId, access.ctx.email || access.ctx.userId);
   revalidatePath(`/mychef/inbox`);
   revalidatePath(`/mychef/inbox/${conversationId}`);
+}
+
+export type AgentActionState = {
+  ok?: boolean;
+  error?: string;
+  message?: string;
+  draftText?: string;
+  provider?: string;
+  model?: string;
+  why?: string;
+  whyNot?: string;
+  notice?: string | null;
+  escalate?: boolean;
+  fellBack?: boolean;
+  sources?: { id: string; title: string }[];
+} | null;
+
+/**
+ * Pressing Agent in a conversation. Server-only, role-gated, and it only writes a draft: the
+ * reply still needs a human review and approval, and no channel is contacted.
+ */
+export async function agentDraftAction(
+  conversationId: string,
+  instruction: string,
+): Promise<AgentActionState> {
+  const access = await getWorkspaceAccess("mychef");
+  if (access.status !== "ok" || !canReview(access.ctx.role)) {
+    return { ok: false, error: "You cannot draft in this workspace." };
+  }
+  const result = await agentDraftForConversation(
+    conversationId,
+    access.ctx.email || access.ctx.userId,
+    instruction.slice(0, 600),
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+  revalidatePath(`/mychef/inbox`);
+  revalidatePath(`/mychef/inbox/${conversationId}`);
+  const agent = result.agent;
+  return {
+    ok: true,
+    draftText: agent.draftText,
+    provider: agent.provider,
+    model: agent.model,
+    why: agent.why,
+    whyNot: agent.whyNot,
+    notice: agent.notice,
+    escalate: agent.escalate,
+    fellBack: agent.fellBack,
+    sources: agent.sourceRefs.map((ref) => ({ id: ref.id, title: ref.title })),
+    message: agent.fellBack
+      ? "Local draft written. Nothing was sent."
+      : "Agent draft written. Review it before approving. Nothing was sent.",
+  };
 }
 
 export async function updateTagsAction(
