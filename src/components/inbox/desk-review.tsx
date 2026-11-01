@@ -63,7 +63,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { CategoryTagId } from "@/lib/contact-tags";
 import type { ContactResponseMetrics } from "@/lib/contact-response";
 import { channelLabel } from "@/lib/channels";
-import { formatConfidence, formatWhen } from "@/lib/format";
+import { formatConfidence, formatWhen, initials } from "@/lib/format";
 import { REASON_CODES } from "@/lib/reason-codes";
 import { cn } from "cn";
 
@@ -106,16 +106,6 @@ function dayLabel(value: Date | string): string {
     day: "numeric",
     month: "short",
   }).format(date);
-}
-
-function initials(name: string | null): string {
-  if (!name?.trim()) return "?";
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
 }
 
 function sourceIsApproved(

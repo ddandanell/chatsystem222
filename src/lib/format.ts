@@ -60,3 +60,24 @@ export function roleLabel(role: string): string {
   if (!role) return role;
   return role.slice(0, 1).toUpperCase() + role.slice(1);
 }
+
+/**
+ * Avatar initials that survive a non-BMP first character.
+ *
+ * The old version in queue-pane.tsx and desk-review.tsx read `part[0]`, one UTF-16 code unit. A
+ * contact whose name starts with an emoji therefore produced a lone high surrogate: the HTML
+ * carried the raw unit, the RSC payload escaped it, and React reported error #418 on
+ * /mychef/inbox ("server rendered text didn't match the client"). Array.from() takes whole code
+ * points, so server and browser render the same string. 3 of 120 live needs_reply contacts in the
+ * mychef workspace carry an astral character; one starts with one.
+ */
+export function initials(name: string | null | undefined): string {
+  if (!name?.trim()) return "?";
+  const letters = name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => Array.from(part)[0]?.toUpperCase() ?? "")
+    .join("");
+  return letters || "?";
+}

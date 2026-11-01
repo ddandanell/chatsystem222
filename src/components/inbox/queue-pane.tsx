@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import type { DeskFilter, DeskQueueItem } from "@/data/mychef-store";
-import { excerpt, formatWhen } from "@/lib/format";
+import { excerpt, formatWhen, initials } from "@/lib/format";
 import { cn } from "cn";
 
 const FILTERS: { id: DeskFilter; label: string }[] = [
@@ -36,12 +36,6 @@ function statusLabel(filterBucket: DeskFilter): string {
   if (filterBucket === "escalated") return "Escalated";
   if (filterBucket === "auto_sent") return "Auto-sent";
   return "Open";
-}
-
-function initials(name: string | null): string {
-  if (!name?.trim()) return "?";
-  const parts = name.trim().split(/\s+/).slice(0, 2);
-  return parts.map((part) => part[0]?.toUpperCase() ?? "").join("") || "?";
 }
 
 export function QueuePane({
