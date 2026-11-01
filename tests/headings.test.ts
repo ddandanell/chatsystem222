@@ -96,5 +96,44 @@ test("the routes without a visible subject heading use a screen-reader h1 until 
     "dashboard's subject is visible now, so it must not also carry a screen-reader duplicate",
   );
   assert.match(read("src/app/[workspace]/inbox/page.tsx"), /<h1 className="sr-only">Inbox<\/h1>/);
-  assert.match(read("src/app/[workspace]/inbox/[id]/page.tsx"), /<h1 className="sr-only">Draft<\/h1>/);
+});
+
+test("the thread's h1 names the open conversation, not the word Draft", () => {
+  const desk = read("src/app/[workspace]/inbox/desk.tsx");
+  assert.match(
+    desk,
+    /<h1 className="sr-only">\s*\{subjectHeading \? `Conversation with \$\{subjectHeading\}` : "Inbox"\}\s*<\/h1>/,
+    "the desk renders the route's single h1 from the conversation row it already loaded",
+  );
+  const page = read("src/app/[workspace]/inbox/[id]/page.tsx");
+  assert.doesNotMatch(
+    page,
+    /<h1 className="sr-only">Draft<\/h1>/,
+    "the page must not print a second h1 that repeats the h2 below it",
+  );
+});
+
+/**
+ * The defect this guards: MC-022 promoted the page subject to h1 and demoted the shell's
+ * workspace name to a <p>, which left the old h3 section headings with no h2 above them.
+ * The presence checks above cannot see that; order can.
+ */
+test("no page skips a heading level on the way down", () => {
+  for (const page of PAGES) {
+    const source = read(page);
+    const levels = [...source.matchAll(/<h([1-6])[\s>]/g)].map((m) => Number(m[1]));
+    assert.ok(levels.length > 0, `${page} must declare a heading`);
+    let previous = 0;
+    for (const [index, level] of levels.entries()) {
+      if (level === 1) {
+        previous = 1;
+        continue;
+      }
+      assert.ok(
+        level <= previous + 1,
+        `${page}: heading #${index + 1} is h${level} after h${previous} — that skips a level`,
+      );
+      previous = level;
+    }
+  }
 });

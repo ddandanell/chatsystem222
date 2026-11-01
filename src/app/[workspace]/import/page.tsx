@@ -74,7 +74,7 @@ export default async function ImportPage({
       {review ? (
         <form action={importArchiveAction} className="flex max-w-xl flex-col gap-3 rounded-xl border p-4">
           <div className="flex flex-col gap-1">
-            <h3 className="text-sm font-medium">ChatGPT project export</h3>
+            <h2 className="text-sm font-medium">ChatGPT project export</h2>
             <p className="text-sm leading-6 text-muted-foreground">
               Zip, JSON, or Markdown. The file is stored as a raw archive for this workspace. Knowledge is not changed.
             </p>

@@ -286,7 +286,7 @@ export default async function CandidatesPage({
 
       {rest.length > 0 ? (
         <section className="flex flex-col gap-3">
-          <h3 className="text-sm font-medium">Resolved snippets</h3>
+          <h2 className="text-sm font-medium">Resolved snippets</h2>
           <ul className="flex flex-col gap-3">
             {rest.map((card) => (
               <li key={card.id} className="flex flex-col gap-2 rounded-xl border px-4 py-3">
@@ -304,7 +304,7 @@ export default async function CandidatesPage({
 
       {neon ? (
         <section className="flex flex-col gap-3">
-          <h3 className="text-sm font-medium">Knowledge drafts</h3>
+          <h2 className="text-sm font-medium">Knowledge drafts</h2>
           <p className="max-w-2xl text-sm text-muted-foreground">
             Imported and curated rows. Approving or retiring changes status only; the row stays in
             the table, and only an approved row inside this project can be quoted in a draft.
