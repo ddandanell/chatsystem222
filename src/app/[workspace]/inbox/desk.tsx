@@ -68,6 +68,9 @@ export async function MychefDesk({
   search: string;
 }) {
   const filter = parseFilter(filterRaw);
+  // The route's subject heading is the conversation this page is about (MC-022 follow-up): the
+  // page owns one h1 and it must not repeat the word "Draft" already used by an h2 below.
+  let subjectHeading: string | null = null;
   const [inbox, recorded] = await Promise.all([
     listDeskQueue(filter, page, search),
     selectedId ? getRecordedDecision(selectedId).catch(() => null) : Promise.resolve(null),
@@ -94,6 +97,7 @@ export async function MychefDesk({
 
   if (activeId) {
     if (recorded) {
+      subjectHeading = recorded.contact_name ?? null;
       const action = outcomeAction.bind(null, recorded.id);
       workspace = (
         <article className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6">
@@ -196,6 +200,7 @@ export async function MychefDesk({
         if (ensured.ok && ensured.conversation) conversation = ensured.conversation;
       }
       if (conversation) {
+        subjectHeading = conversation.contact_name ?? null;
         const knowledge = await listStoredKnowledge();
         const titles = Object.fromEntries(knowledge.map((doc) => [doc.id, doc.title]));
         const statuses = Object.fromEntries(knowledge.map((doc) => [doc.id, doc.status]));
@@ -279,6 +284,9 @@ export async function MychefDesk({
         />
       }
     >
+      <h1 className="sr-only">
+        {subjectHeading ? `Conversation with ${subjectHeading}` : "Inbox"}
+      </h1>
       {workspace}
     </DeskShell>
   );

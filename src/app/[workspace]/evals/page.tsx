@@ -81,7 +81,7 @@ export default async function EvalsPage({
             return (
               <li key={row.id} className="flex flex-col gap-2 rounded-xl border px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-medium">{row.name}</h3>
+                  <h2 className="text-sm font-medium">{row.name}</h2>
                   <Badge variant={latest ? (latest.passed ? "secondary" : "outline") : "outline"}>
                     {latest ? (latest.passed ? "Pass" : "Fail") : "Not run"}
                   </Badge>

@@ -47,8 +47,9 @@ export default async function InboxPage({
     const filter = typeof query.filter === "string" ? query.filter : undefined;
     return (
       <>
-        {/* MychefDesk owns the visible panes; the page subject is this route's, so it stays here. */}
-        <h1 className="sr-only">Inbox</h1>
+        {/* MychefDesk owns the visible panes and renders the route's single h1 from the
+            conversation row it already loaded. A second sr-only "Inbox" h1 here gave
+            /mychef/inbox two h1s. */}
         <MychefDesk
           slug={access.ctx.orgSlug}
           filterRaw={filter}

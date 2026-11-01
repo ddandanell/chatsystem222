@@ -149,7 +149,7 @@ export default async function DashboardPage({
         ))}
       </ul>
       <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium">Provider keys</h3>
+        <h2 className="text-sm font-medium">Provider keys</h2>
         <ul className="grid gap-3 sm:grid-cols-2">
           {PRIMARY_PROVIDERS.map((provider) => {
             const row = storedKeys.get(provider);
@@ -192,7 +192,7 @@ export default async function DashboardPage({
         ) : null}
       </div>
       <section id="escalations" className="flex flex-col gap-2">
-        <h3 className="text-sm font-medium">Escalations</h3>
+        <h2 className="text-sm font-medium">Escalations</h2>
         {stats.recentEscalations.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No review has been marked needs a human.
@@ -212,7 +212,7 @@ export default async function DashboardPage({
       </section>
       {Object.keys(groups).length > 0 ? (
         <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-medium">Knowledge groups</h3>
+          <h2 className="text-sm font-medium">Knowledge groups</h2>
           <div className="flex flex-wrap gap-2">
             {Object.entries(groups).map(([group, count]) => (
               <Link
@@ -229,7 +229,7 @@ export default async function DashboardPage({
       ) : null}
       {recent && recent.rows.length > 0 ? (
         <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-medium">Newest conversations that need a reply</h3>
+          <h2 className="text-sm font-medium">Newest conversations that need a reply</h2>
           <ul className="flex flex-col gap-2">
             {recent.rows.slice(0, 6).map((row) => (
               <li key={row.id}>

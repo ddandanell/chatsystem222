@@ -39,8 +39,8 @@ export default async function DecisionPage({
     const filter = typeof query.filter === "string" ? query.filter : undefined;
     return (
       <>
-        {/* MychefDesk owns the three panes; the route's own subject heading stays here (MC-022). */}
-        <h1 className="sr-only">Draft</h1>
+        {/* MychefDesk owns the three panes and the route's single h1 (MC-022 follow-up): the
+            heading names the open conversation, so it has to be rendered where that row is read. */}
         <MychefDesk
           slug={access.ctx.orgSlug}
           selectedId={id}
@@ -63,7 +63,9 @@ export default async function DecisionPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="sr-only">Draft</h1>
+      {/* Legacy path (local Docker tenants): no contact row is read here, so the subject names
+          the job rather than repeating the "Draft" h2 directly below it. */}
+      <h1 className="sr-only">Conversation review</h1>
       <div className="flex flex-wrap items-center gap-3">
         <Link
           href={`/${access.ctx.orgSlug}/inbox`}

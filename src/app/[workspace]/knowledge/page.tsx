@@ -114,7 +114,7 @@ async function MychefKnowledge({ slug, group }: { slug: string; group: string })
       <KnowledgeSection title="Positions" docs={positions.map(asCard)} slug={slug} empty="No positions in this group." />
       <KnowledgeSection title="Playbooks" docs={playbooks.map(asCard)} slug={slug} empty="No playbooks in this group." />
       <form action={addPositionAction} className="flex max-w-xl flex-col gap-3 rounded-xl border p-4">
-        <h3 className="text-sm font-medium">Add a position</h3>
+        <h2 className="text-sm font-medium">Add a position</h2>
         <input name="title" required placeholder="Title" className="h-9 rounded-md border bg-background px-3 text-sm" />
         <textarea name="body" required rows={5} placeholder="What is true" className="rounded-md border bg-background px-3 py-2 text-sm" />
         <select name="group" className="h-9 rounded-md border bg-background px-3 text-sm">
@@ -158,7 +158,7 @@ function KnowledgeSection({
 }) {
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-sm font-medium">{title}</h3>
+      <h2 className="text-sm font-medium">{title}</h2>
       {docs.length === 0 ? (
         <p className="text-sm text-muted-foreground">{empty}</p>
       ) : (
