@@ -9,16 +9,8 @@
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { auditEvents, feedbackEvents, rules } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
-import { reasonLabel, type ReasonCode } from "@/lib/reason-codes";
+import { reasonLabel, reasonSpec } from "@/lib/reason-codes";
 
-const KNOWLEDGE = new Set<ReasonCode>(["wrong_policy", "wrong_fact", "missing_knowledge"]);
-const PROCEDURE = new Set<ReasonCode>([
-  "too_formal",
-  "too_casual",
-  "should_have_asked",
-  "missed_upsell",
-  "customer_angry",
-]);
 
 type Group = "knowledge_gap" | "procedure_gap" | "escalation" | "retrieval";
 
@@ -31,39 +23,30 @@ type Proposal = {
   evidence: number;
 };
 
+/**
+ * The legacy local-Docker learning loop. Routing comes from the single registry in
+ * `src/lib/reason-codes.ts`, so a code the desk now collects (too_long, wrong_price,
+ * invented_detail, ignored_question, wrong_recommendation, multiple_asks, no_next_step,
+ * off_brand, repeats_guest) produces a proposal here too instead of returning null.
+ */
+const SCOPE_FOR_GROUP: Record<Group, string> = {
+  knowledge_gap: "position",
+  procedure_gap: "playbook",
+  escalation: "escalation",
+  retrieval: "retrieval",
+};
+
+const VERB_FOR_GROUP: Record<Group, string> = {
+  knowledge_gap: "Propose a position edit",
+  procedure_gap: "Propose a playbook edit",
+  escalation: "Propose an escalation rule",
+  retrieval: "Propose a retrieval change",
+};
+
 function diagnose(reason: string, count: number, sourceId?: string): Proposal | null {
-  if (reason === "good_as_drafted") return null;
-  if (KNOWLEDGE.has(reason as ReasonCode)) {
-    return {
-      key: reason,
-      scope: "position",
-      group: "knowledge_gap",
-      reasonCode: reason,
-      evidence: count,
-      statement: `Propose a position edit. Reviewers marked ${reasonLabel(reason)} ${count} times.`,
-    };
-  }
-  if (PROCEDURE.has(reason as ReasonCode)) {
-    return {
-      key: reason,
-      scope: "playbook",
-      group: "procedure_gap",
-      reasonCode: reason,
-      evidence: count,
-      statement: `Propose a playbook edit. Reviewers marked ${reasonLabel(reason)} ${count} times.`,
-    };
-  }
-  if (reason === "needs_human") {
-    return {
-      key: reason,
-      scope: "escalation",
-      group: "escalation",
-      reasonCode: reason,
-      evidence: count,
-      statement: `Propose an escalation rule. Reviewers marked Needs a human ${count} times.`,
-    };
-  }
-  if (reason === "irrelevant_source" && sourceId) {
+  const spec = reasonSpec(reason);
+  if (!spec || !spec.learnable) return null;
+  if (spec.group === "retrieval" && sourceId) {
     return {
       key: `${reason}:${sourceId}`,
       scope: `retrieval:${sourceId}`,
@@ -73,7 +56,14 @@ function diagnose(reason: string, count: number, sourceId?: string): Proposal | 
       statement: `Penalize source ${sourceId}. Reviewers marked it irrelevant ${count} times.`,
     };
   }
-  return null;
+  return {
+    key: reason,
+    scope: SCOPE_FOR_GROUP[spec.group],
+    group: spec.group,
+    reasonCode: reason,
+    evidence: count,
+    statement: `${VERB_FOR_GROUP[spec.group]}. ${reasonLabel(reason)} was marked ${count} times.`,
+  };
 }
 
 export async function runLearningLoop(orgId: string, actorId: string) {

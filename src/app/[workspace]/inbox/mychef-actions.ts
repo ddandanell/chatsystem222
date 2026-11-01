@@ -17,6 +17,7 @@ import {
   draftForConversation,
   proposeFromDecision,
   recordOutcome,
+  renegotiateDraft,
   reviewConversation,
   updateContactTags,
 } from "@/data/mychef-store";
@@ -38,6 +39,30 @@ export async function draftConversationAction(conversationId: string): Promise<v
   await draftForConversation(conversationId, access.ctx.email || access.ctx.userId);
   revalidatePath(`/mychef/inbox`);
   revalidatePath(`/mychef/inbox/${conversationId}`);
+}
+
+/**
+ * CS-020: renegotiate. The operator's sentence about what the draft got wrong is the provider
+ * instruction and becomes a pending situational case; it is never treated as approved knowledge.
+ */
+export async function renegotiateAction(
+  conversationId: string,
+  correction: string,
+): Promise<ActionState> {
+  const access = await getWorkspaceAccess("mychef");
+  if (access.status !== "ok" || !canReview(access.ctx.role)) {
+    return { error: "You cannot renegotiate a draft in this workspace." };
+  }
+  const result = await renegotiateDraft(
+    conversationId,
+    access.ctx.email || access.ctx.userId,
+    correction,
+  );
+  if (!result.ok) return { error: result.error };
+  revalidatePath(`/mychef/inbox/${conversationId}`);
+  revalidatePath(`/mychef/inbox`);
+  revalidatePath(`/mychef/candidates`);
+  return { message: "Draft rewritten with your correction. Nothing was sent." };
 }
 
 export type AgentActionState = {
@@ -126,6 +151,8 @@ export async function reviewConversationAction(
   const whyNot = String(formData.get("why_not") ?? "").trim();
   const finalText = String(formData.get("final_text") ?? "");
   const remember = formData.get("remember") === "on";
+  // Only the explicit below-bar confirmation sets this. Anything else leaves the gate closed.
+  const gateAck = formData.get("gate_ack") === "below-bar";
   if (!isHumanDecision(humanDecision)) return { error: "Choose a decision." };
   if (!isReasonCode(reasonCode)) return { error: "Choose a reason code." };
   if (!rationale || !whyNot) {
@@ -147,6 +174,7 @@ export async function reviewConversationAction(
     whyNot,
     finalText,
     remember,
+    gateAck,
   });
   if (!saved.ok) return { error: saved.error };
   revalidatePath(`/mychef/inbox`);

@@ -5,10 +5,14 @@
  * Suggested) and parse AI vs human evidence from proposal content.
  * Tables: reads shapes written into mychef_inbox.knowledge (learning-pass /
  * ledger-rule / situational). Does not auto-activate or send.
+ *
+ * The code → queue mapping lives in `src/lib/reason-codes.ts`, single table. This module keeps the
+ * function names the rest of the app already calls, so there is one place to register a new code.
  * Docs: documentation/cbls-architecture.md
  *       documentation/handoff.md
  *       documentation/learning-queue.md
  */
+import { reasonSpec, type ReasonGroup } from "@/lib/reason-codes";
 
 export const QUEUE_TYPES = [
   "Missing Knowledge",
@@ -19,24 +23,43 @@ export const QUEUE_TYPES = [
 
 export type QueueType = (typeof QUEUE_TYPES)[number];
 
-const MISSING = new Set(["wrong_policy", "missing_knowledge"]);
-const TONE = new Set(["too_formal", "too_casual"]);
-const OUTDATED = new Set(["wrong_fact", "irrelevant_source"]);
-
 export function queueTypeForReason(reason: string): QueueType {
-  if (MISSING.has(reason)) return "Missing Knowledge";
-  if (TONE.has(reason)) return "Tone";
-  if (OUTDATED.has(reason)) return "Outdated";
-  return "Suggested";
+  return reasonSpec(reason)?.queue ?? "Suggested";
+}
+
+export function groupForReason(reason: string): ReasonGroup {
+  return reasonSpec(reason)?.group ?? "procedure_gap";
 }
 
 export function isKnowledgeGapReason(reason: string): boolean {
+  const spec = reasonSpec(reason);
+  if (spec) return spec.group === "knowledge_gap";
   return ["wrong_policy", "wrong_fact", "missing_knowledge"].includes(reason);
 }
 
 /** Reasons that should become Learning Queue proposals after a correction. */
 export function isLearnableReason(reason: string): boolean {
+  const spec = reasonSpec(reason);
+  if (spec) return spec.learnable;
   return reason !== "good_as_drafted" && reason !== "auto_sent_candidate";
+}
+
+/**
+ * The candidate statement for a correction code, from the same registry. Returns null only for a
+ * code that is not learnable (good as drafted) or not registered at all — and an unregistered code
+ * fails `tests/reason-registry.test.ts`, so it cannot be added to the picker without a statement.
+ */
+export function statementForReason(
+  reason: string,
+  count: number,
+): { key: string; group: ReasonGroup; statement: string } | null {
+  const spec = reasonSpec(reason);
+  if (!spec || !spec.learnable) return null;
+  return {
+    key: spec.code,
+    group: spec.group,
+    statement: `${spec.statement} Reviewers marked ${spec.code} ${count} times.`,
+  };
 }
 
 export type EvidenceDiff = {

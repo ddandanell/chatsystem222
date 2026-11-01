@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import {
   draftConversationAction,
+  renegotiateAction,
   reviewConversationAction,
   updateTagsAction,
 } from "@/app/[workspace]/inbox/mychef-actions";
@@ -64,6 +65,7 @@ import type { CategoryTagId } from "@/lib/contact-tags";
 import type { ContactResponseMetrics } from "@/lib/contact-response";
 import { channelLabel } from "@/lib/channels";
 import { formatConfidence, formatWhen, initials } from "@/lib/format";
+import { gateDraft, type DraftGate } from "@/lib/draft-gate";
 import { REASON_CODES } from "@/lib/reason-codes";
 import { cn } from "cn";
 
@@ -419,6 +421,28 @@ export function DeskReview({
   const [error, setError] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(initialDraftError);
   const [sourceOpen, setSourceOpen] = useState<string | null>(null);
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [correction, setCorrection] = useState("");
+  const [correctionNotice, setCorrectionNotice] = useState<string | null>(null);
+  const [gateConfirm, setGateConfirm] = useState(false);
+
+  /**
+   * The same pure gate the server runs before it writes a decision, computed on the text currently
+   * in the box so the button tells the truth while the operator edits. The server recomputes it from
+   * the stored draft and the knowledge approval rows; this copy can only inform, never permit.
+   */
+  const gate: DraftGate = useMemo(
+    () =>
+      gateDraft({
+        draftText,
+        thread: conversation.messages,
+        sources: (conversation.draft?.sources ?? []).map((source) => ({
+          id: source.id,
+          status: knowledgeStatus[source.id] ?? null,
+        })),
+      }),
+    [draftText, conversation.draft?.sources, conversation.messages, knowledgeStatus],
+  );
 
   const dirty = useMemo(
     () => Boolean(conversation.draft && draftText.trim() !== conversation.draft.body.trim()),
@@ -439,8 +463,16 @@ export function DeskReview({
   }
 
   function submit(decision: "accepted" | "edited" | "escalated") {
+    // CS-018: fail closed. A below-bar draft is not recorded on the first press; the button becomes
+    // the confirmation and the reason is on screen. The server refuses a missing acknowledgement too.
+    if (decision !== "escalated" && gate.belowBar && !gateConfirm) {
+      setGateConfirm(true);
+      setError(null);
+      return;
+    }
     startTransition(async () => {
       setError(null);
+      setCorrectionNotice(null);
       const form = new FormData();
       const human =
         decision === "accepted" && dirty
@@ -469,6 +501,7 @@ export function DeskReview({
               (human === "escalated" ? "A person should take this." : "The draft needed a correction."),
       );
       if (remember && human === "edited") form.set("remember", "on");
+      if (gate.belowBar) form.set("gate_ack", "below-bar");
       const result = await reviewConversationAction(conversation.id, null, form);
       if (result?.error) {
         setError(result.error);
@@ -486,8 +519,36 @@ export function DeskReview({
         await draftConversationAction(conversation.id);
         router.refresh();
       } catch {
-        setDraftError("Could not generate a draft. Try Regenerate.");
+        setDraftError("Could not generate a draft. Try again.");
       }
+    });
+  }
+
+  /**
+   * CS-020: renegotiate. What the operator writes here reaches the provider as its instruction and is
+   * stored as a pending situational case — the feedback loop David asked for, without publishing a
+   * rule. A blank correction is refused rather than silently re-rolling the same draft.
+   */
+  function renegotiate() {
+    const text = correction.trim();
+    if (!text) {
+      setCorrectionNotice("Write what should change before renegotiating.");
+      return;
+    }
+    startTransition(async () => {
+      setError(null);
+      setDraftError(null);
+      setCorrectionNotice(null);
+      const result = await renegotiateAction(conversation.id, text);
+      if (result?.error) {
+        setCorrectionNotice(result.error);
+        return;
+      }
+      setCorrection("");
+      setCorrectionOpen(false);
+      setGateConfirm(false);
+      setCorrectionNotice(result?.message ?? "Draft rewritten with your correction. Nothing was sent.");
+      router.refresh();
     });
   }
 
@@ -700,6 +761,15 @@ export function DeskReview({
                       AI suggested reply
                     </CardTitle>
                     <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant={gate.passes ? "secondary" : "destructive"}
+                        data-slot="draft-gate"
+                        title={gate.checks
+                          .map((check) => `${check.id} ${check.label}: ${check.pass ? "pass" : "fail"} — ${check.why}`)
+                          .join("\n")}
+                      >
+                        {gate.passes ? `gate ${gate.score}/${gate.max}` : `below bar ${gate.score}/${gate.max}`}
+                      </Badge>
                       {conversation.draft.confidence != null ? (
                         <Badge variant="secondary">
                           {formatConfidence(conversation.draft.confidence)} confidence
@@ -769,11 +839,72 @@ export function DeskReview({
                       <DiffText original={conversation.draft.body} edited={draftText} />
                     </div>
                   ) : null}
+
+                  {/* CS-018: the five checks are named, not summarised away. */}
+                  <details className="mt-4 text-xs" data-slot="draft-gate-detail">
+                    <summary className="cursor-pointer text-muted-foreground">
+                      Quality gate {gate.score}/{gate.max} · {gate.state === "error"
+                        ? "could not run, treated as below bar"
+                        : gate.passes
+                          ? "all five checks pass"
+                          : "below the bar"}
+                    </summary>
+                    <ul className="mt-2 flex flex-col gap-1">
+                      {gate.checks.map((check) => (
+                        <li key={check.id} className={check.pass ? "text-muted-foreground" : "text-destructive"}>
+                          <span className="font-medium">{check.id} · {check.label}</span> — {check.why}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+
+                  {correctionOpen ? (
+                    <div className="mt-4 flex flex-col gap-2 rounded-lg border border-border bg-background p-3" data-slot="renegotiate">
+                      <label className="flex flex-col gap-2 text-sm" htmlFor="renegotiate-correction">
+                        <span className="font-medium">What was wrong with that reply?</span>
+                        <Textarea
+                          id="renegotiate-correction"
+                          value={correction}
+                          onChange={(event) => setCorrection(event.target.value)}
+                          rows={3}
+                          maxLength={600}
+                          className="bg-background"
+                          placeholder="For example: too long, and it quoted a rate we have not confirmed."
+                        />
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        The correction is sent with the next draft and kept as a pending case. A person
+                        still approves the case; nothing is published or sent.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" disabled={pending} onClick={renegotiate}>
+                          <RefreshCwIcon data-icon="inline-start" />
+                          Rewrite with this correction
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          disabled={pending}
+                          onClick={() => setCorrectionOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {correctionNotice ? (
+                    <p className="mt-3 text-xs text-muted-foreground" role="status" aria-live="polite">
+                      {correctionNotice}
+                    </p>
+                  ) : null}
                 </CardContent>
                 <CardFooter className="flex flex-wrap gap-2 bg-card">
                   <Button
                     type="button"
                     disabled={pending}
+                    variant={gate.belowBar && gateConfirm ? "destructive" : "default"}
+                    data-slot="approve"
                     onClick={() => submit(dirty ? "edited" : "accepted")}
                   >
                     {pending ? (
@@ -781,11 +912,26 @@ export function DeskReview({
                     ) : (
                       <SendIcon data-icon="inline-start" />
                     )}
-                    {dirty ? "Approve correction" : "Approve"}
+                    {gate.belowBar && gateConfirm
+                      ? "Approve anyway · below bar"
+                      : dirty
+                        ? "Approve correction"
+                        : "Approve"}
+                    <span className="ml-1 text-xs opacity-80">
+                      · {gate.passes ? `${gate.score}/${gate.max}` : `${gate.score}/${gate.max} below bar`}
+                    </span>
                   </Button>
-                  <Button type="button" variant="outline" disabled={pending} onClick={regenerate}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => {
+                      setCorrectionOpen((open) => !open);
+                      setCorrectionNotice(null);
+                    }}
+                  >
                     <RefreshCwIcon data-icon="inline-start" />
-                    Regenerate
+                    Renegotiate
                   </Button>
                   <Button
                     type="button"
@@ -836,11 +982,25 @@ export function DeskReview({
                     ) : (
                       <RefreshCwIcon data-icon="inline-start" />
                     )}
-                    Regenerate
+                    Write a draft
                   </Button>
                 </CardContent>
               </Card>
             )}
+
+            {gate.belowBar && gateConfirm && conversation.draft ? (
+              <Alert variant="destructive" data-slot="gate-confirm">
+                <AlertTriangleIcon />
+                <AlertTitle>Below the quality bar · {gate.score}/{gate.max}</AlertTitle>
+                <AlertDescription>
+                  {gate.checks
+                    .filter((check) => !check.pass)
+                    .map((check) => check.why)
+                    .join(" ")}{" "}
+                  Press Approve anyway to record it; the decision keeps the gate state.
+                </AlertDescription>
+              </Alert>
+            ) : null}
 
             {error ? (
               <Alert variant="destructive">
