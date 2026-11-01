@@ -14,12 +14,19 @@
 import { revalidatePath } from "next/cache";
 import {
   draftForConversation,
+  proposeFromDecision,
   recordOutcome,
   reviewConversation,
   updateContactTags,
 } from "@/data/mychef-store";
 import { getWorkspaceAccess } from "@/lib/context";
-import { isHumanDecision, isReasonCode, OUTCOMES, type Outcome } from "@/lib/reason-codes";
+import { isLearnableReason } from "@/lib/learning-queue";
+import {
+  isHumanDecision,
+  isReasonCode,
+  OUTCOMES,
+  type Outcome,
+} from "@/lib/reason-codes";
 import { canReview } from "@/lib/workspace-access";
 
 export type ActionState = { error?: string; message?: string; id?: string } | null;
@@ -67,7 +74,18 @@ export async function reviewConversationAction(
   const remember = formData.get("remember") === "on";
   if (!isHumanDecision(humanDecision)) return { error: "Choose a decision." };
   if (!isReasonCode(reasonCode)) return { error: "Choose a reason code." };
-  if (!rationale || !whyNot) return { error: "Say why this reply, and why not the alternative." };
+  if (!rationale || !whyNot) {
+    return { error: "Say why this reply, and why not the alternative." };
+  }
+  if (
+    (humanDecision === "edited" || humanDecision === "rejected" || humanDecision === "escalated") &&
+    !isLearnableReason(reasonCode)
+  ) {
+    return {
+      error:
+        "Edits and rejects need a learning reason (not Good as drafted) so the case can enter the Learning Queue.",
+    };
+  }
   const saved = await reviewConversation(conversationId, access.ctx.email || access.ctx.userId, {
     humanDecision,
     reasonCode,
@@ -79,7 +97,19 @@ export async function reviewConversationAction(
   if (!saved.ok) return { error: saved.error };
   revalidatePath(`/mychef/inbox`);
   revalidatePath(`/mychef/candidates`);
-  return { message: "Review recorded. Nothing was sent.", id: saved.id };
+  // A learnable edit or reject proposes one pending Learning Queue card. It never approves,
+  // never touches the curated rows, and never sends.
+  let queued = false;
+  if (isLearnableReason(reasonCode)) {
+    const proposed = await proposeFromDecision(saved.id, access.ctx.email || access.ctx.userId);
+    queued = proposed.ok && proposed.queued;
+  }
+  return {
+    message: queued
+      ? "Review recorded and a Learning Queue card is pending. Nothing was sent."
+      : "Review recorded. Nothing was sent.",
+    id: saved.id,
+  };
 }
 
 export async function outcomeAction(decisionId: string, formData: FormData): Promise<void> {

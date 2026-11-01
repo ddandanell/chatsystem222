@@ -37,7 +37,7 @@ export async function learnPassAction(slug: string) {
   revalidatePath(`/${slug}/candidates`);
   revalidatePath(`/${slug}/dashboard`);
   redirect(
-    `/${slug}/candidates?clustered=${result.clustered}&proposed=${result.proposed}&refreshed=${result.refreshed}`,
+    `/${slug}/candidates?clustered=${result.clustered}&proposed=${result.proposed}&refreshed=${result.refreshed}&processed=${result.processed}`,
   );
 }
 

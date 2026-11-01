@@ -57,6 +57,24 @@ export async function MychefThread({ id }: { id: string }) {
             <dd>{recorded.outcome ?? "Not recorded yet."}</dd>
           </div>
         </dl>
+        {recorded.reason_code !== "good_as_drafted" &&
+        recorded.reason_code !== "auto_sent_candidate" ? (
+          <Alert>
+            <AlertTitle>Learning Queue</AlertTitle>
+            <AlertDescription className="flex flex-col gap-2">
+              <span>
+                Corrections with this reason feed the Learning Queue. Approve or dismiss
+                the situational snippet there. Nothing is sent from that page either.
+              </span>
+              <Link
+                href="/mychef/candidates"
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-fit")}
+              >
+                Open Learning Queue
+              </Link>
+            </AlertDescription>
+          </Alert>
+        ) : null}
         <OutcomeForm action={action} />
       </article>
     );

@@ -1,5 +1,10 @@
 /**
- * Clusters local feedback into candidate rules. Does not activate them. Do not auto-send.
+ * Local Docker learning loop (rules table).
+ *
+ * CBLS cousin of runLearningPass on Neon: clusters feedback into candidate rules only. Idempotent
+ * via the since-last-rule window. Never auto-activates, never sends. The Neon path lives in
+ * src/data/mychef-store.ts (runLearningPass).
+ * Docs: documentation/cbls-architecture.md, documentation/learning-queue.md.
  */
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { auditEvents, feedbackEvents, rules } from "@/db/schema";
