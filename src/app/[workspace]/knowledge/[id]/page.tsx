@@ -55,7 +55,7 @@ export default async function KnowledgeDocPage({
             <Badge variant="secondary">{doc.kind}</Badge>
             <Badge variant="outline">{doc.group}</Badge>
           </div>
-          <h2 className="text-2xl font-medium tracking-tight">{doc.title}</h2>
+          <h1 className="text-2xl font-medium tracking-tight">{doc.title}</h1>
         </div>
         <MarkdownBody source={doc.content} />
       </article>
@@ -84,7 +84,7 @@ export default async function KnowledgeDocPage({
           {source ? <Badge variant="outline">{source}</Badge> : null}
           {file ? <Badge variant="outline">{file.priority}</Badge> : null}
         </div>
-        <h2 className="text-2xl font-medium tracking-tight">{title}</h2>
+        <h1 className="text-2xl font-medium tracking-tight">{title}</h1>
         {file ? (
           <p className="text-sm text-muted-foreground">
             {file.owner} · {file.status}

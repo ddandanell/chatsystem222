@@ -102,6 +102,9 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* The visible 2xl heading below is the workspace name, not this page's subject, so the page
+          subject lives here for assistive tech until the shared header lands (MC-022). */}
+      <h1 className="sr-only">Dashboard</h1>
       <div className="flex flex-col gap-1">
         <h2 className="text-2xl font-medium tracking-tight">{access.ctx.orgName}</h2>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">

@@ -89,7 +89,9 @@ async function WorkspaceChrome({ workspace }: { workspace: string }) {
               Inbox mychef
             </Link>
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-base font-medium sm:text-lg">{ctx.orgName}</h1>
+              {/* The workspace name is a label, not the page heading: it repeated on all 14
+                  routes and cost every page its own h1 (MC-022). Same classes, no visual change. */}
+              <p className="truncate text-base font-medium sm:text-lg">{ctx.orgName}</p>
               <Badge variant="secondary">{roleLabel(ctx.role)}</Badge>
             </div>
           </div>

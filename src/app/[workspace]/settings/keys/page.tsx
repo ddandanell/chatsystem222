@@ -28,7 +28,7 @@ export default async function KeysPage({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-medium tracking-tight">Provider keys</h2>
+        <h1 className="text-2xl font-medium tracking-tight">Provider keys</h1>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
           Start with Vercel AI Gateway and DeepSeek. Keys are encrypted with
           the server master key and decrypted only for a request. The page

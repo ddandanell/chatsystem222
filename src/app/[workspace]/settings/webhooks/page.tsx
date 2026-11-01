@@ -49,7 +49,7 @@ export default async function WebhooksPage({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-medium tracking-tight">Webhook receipts</h2>
+        <h1 className="text-2xl font-medium tracking-tight">Webhook receipts</h1>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
           GoHighLevel is the channel adapter in use. A matching message becomes a conversation and a pending draft. WhatsApp Business can use the same inbound shape later. It is not connected. Nothing on this page sends a reply.
         </p>
