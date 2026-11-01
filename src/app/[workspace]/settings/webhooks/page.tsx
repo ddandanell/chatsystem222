@@ -56,7 +56,7 @@ export default async function WebhooksPage({
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
           {process.env.GHL_WEBHOOK_SECRET?.trim()
             ? "A shared secret is set. Requests must send it in x-ghl-secret or Authorization: Bearer."
-            : "No shared secret is set, so receipts are marked unverified. Set GHL_WEBHOOK_SECRET to require one."}
+            : "No shared secret is set, so every event is refused with 503. Set GHL_WEBHOOK_SECRET before connecting the sender. Only a local run with MYCHEF_ALLOW_UNVERIFIED_WEBHOOKS=1 accepts unverified events."}
         </p>
       </div>
       {!usesMychefInbox() ? (

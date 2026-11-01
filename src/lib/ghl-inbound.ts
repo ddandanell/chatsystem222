@@ -1,11 +1,12 @@
 /**
  * Parses a GHL payload into mychef_inbox rows and a local draft. Do not auto-send.
  */
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import type pg from "pg";
 import { inboundFromGhl } from "@/channels/inbound";
 import { recordAutoSendCandidateIfEnabled } from "@/lib/autopilot";
 import { localStructuredDraft } from "@/lib/draft";
+import { authorizeWebhook, type WebhookAuthResult } from "@/lib/webhook-auth";
 
 const WORKSPACE = "mychef";
 
@@ -18,20 +19,9 @@ export type GhlResult = {
   detail: string;
 };
 
-function sameSecret(left: string, right: string) {
-  const a = Buffer.from(left);
-  const b = Buffer.from(right);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
-
-export function authorizeGhl(headers: Headers): { ok: true; verified: boolean } | { ok: false } {
-  const secret = process.env.GHL_WEBHOOK_SECRET?.trim() ?? "";
-  if (!secret) return { ok: true, verified: false };
-  const header = headers.get("x-ghl-secret") ?? "";
-  const bearer = headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  if (sameSecret(header, secret) || sameSecret(bearer, secret)) return { ok: true, verified: true };
-  return { ok: false };
+export function authorizeGhl(headers: Headers): WebhookAuthResult {
+  // Fail closed. A missing secret is a configuration fault, not an open door.
+  return authorizeWebhook(headers);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
