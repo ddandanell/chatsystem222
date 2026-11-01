@@ -1,24 +1,13 @@
 # Run MyChef locally + on Vercel
 
-## Why the cloud desktop feels slow
+The console is a Next.js app. It deploys from the Vercel Git integration on `main`; there is no
+separate deploy branch.
 
-The app runs on a remote agent VM. For fast testing, run it on your Mac or deploy to Vercel.
-
-## A — Connect your Mac as a Cursor worker
-
-On your Mac:
-
-1. Install/update Cursor CLI: https://cursor.com/docs/cloud-agent/self-hosted/my-machines
-2. `agent login`
-3. `agent worker start`
-4. Leave that terminal running, then tell this Project chat: “My machine is connected.”
-
-### Manual local run
+## Manual local run
 
 ```bash
-git clone https://github.com/numini-co/inbox-mychef.git
-cd inbox-mychef
-git checkout cursor/decision-ledger-console-d800
+git clone https://github.com/ddandanell/chatsystem222.git
+cd chatsystem222
 npm install
 cp .env.example .env.local
 # Set: DATABASE_URL, KEY_READER_DATABASE_URL, AUTH_SECRET, BYOK_ENCRYPTION_KEY,
@@ -26,29 +15,37 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open http://127.0.0.1:4317/login — `bali@mychef.id` + your password.
+Open http://127.0.0.1:4317/login — `bali@mychef.id` + the account's password.
 
-Use the Neon `mychef` pooled connection string you already shared (gitignored only).
+Use the Neon `mychef` pooled connection string with role `mychef_runtime` (gitignored `.env.local`
+only). That role is not the owner: it cannot create tables, extensions or policies.
 
-## B — Vercel
+Check the tree before trusting it:
 
-Canonical GitHub: https://github.com/numini-co/inbox-mychef
+```bash
+npm test            # unit + contract tests, no database needed
+npm run typecheck   # next typegen, then tsc --noEmit
+npm run build
+```
 
-Preferred tip: `cursor/decision-ledger-console-d800` (do not force-update `main` without reason).
+## Vercel
 
-Permanent Numini project create waits on **user Vercel MCP + Numini SSO**. Until then, use the claimable temp deploy that already proved Neon, or import the GitHub repo manually after SSO.
+- Repository: <https://github.com/ddandanell/chatsystem222>, production branch `main`.
+- `vercel.json` sets install/build commands, region `sin1`, and the daily Learning Queue cron
+  (`/api/cron/learn`, 18:00 UTC, bearer `CRON_SECRET`).
+- Environment variables: the names in `.env.example`. Set `AUTH_URL` to the deployment origin.
+  Never commit values.
+- Pushes to `main` deploy automatically through the Git integration.
 
-Full checklist: [deploy/github-vercel.md](./deploy/github-vercel.md).
-
-On https://vercel.com/new (team **Numini**):
-
-1. Import GitHub `numini-co/inbox-mychef`.
-2. Production branch: `cursor/decision-ledger-console-d800`.
-3. Framework: Next.js (`vercel.json` sets install/build + region `sin1`).
-4. Env (Production + Preview): required names from `.env.example`. Set `AUTH_URL` to the deployment origin.
-5. Deploy. Pushes to the production branch auto-deploy via Vercel Git integration.
+As of 2026-11-01 the console is served on the generated domain
+`https://inbox-mychef-gilt.vercel.app`. `console.mychef.id`, `app.mychef.id` and `admin.mychef.id`
+return `DEPLOYMENT_NOT_FOUND`, so no custom domain is attached yet, and the Vercel project is not
+visible to the bot connectors (they see only `bali-villa-books-api-serverff`). A SHA-level
+deployment check therefore has to wait for correctly scoped access.
 
 ## Do not
 
 - Do not put secrets in git.
-- Do not enable auto-send until you choose to.
+- Do not enable auto-send until a human chooses to.
+- Do not run `db:setup` or the Docker migrations against Neon; they build a parallel schema over the
+  preserved `mychef_inbox` tables.
