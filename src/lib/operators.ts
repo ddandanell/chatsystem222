@@ -23,6 +23,8 @@ export type Operator = {
   name: string;
   role: OperatorRole;
   approved: boolean;
+  /** The row's own switch, kept separate from `approved` so the directory can tell the two apart. */
+  enabled: boolean;
 };
 
 type OperatorConfig = {
@@ -66,6 +68,7 @@ function toOperator(id: string, config: OperatorConfig | null, enabled: boolean)
     name: config.name?.trim() || email,
     role: asRole(config.role),
     approved: enabled && config.approved !== false,
+    enabled,
   };
 }
 

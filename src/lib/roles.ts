@@ -46,3 +46,18 @@ export function canReview(role: Role): boolean {
 export function canManageKeys(role: Role): boolean {
   return role === "owner" || role === "admin";
 }
+
+/**
+ * How one operator row reads to a person: usable, blocked at sign-in, or switched off.
+ *
+ * Both flags are on the row and they mean different things — `enabled` is the switch, `approved` is
+ * the sign-in gate — so the directory must not collapse them into one word. "Disabled" and
+ * "Awaiting approval" are different states and an owner has to be able to tell them apart.
+ */
+export type OperatorStatus = "active" | "awaiting-approval" | "disabled";
+
+export function operatorStatus(state: { enabled: boolean; approved: boolean }): OperatorStatus {
+  if (!state.enabled) return "disabled";
+  if (!state.approved) return "awaiting-approval";
+  return "active";
+}
