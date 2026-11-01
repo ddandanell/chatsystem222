@@ -13,7 +13,7 @@ import {
 } from "@/lib/session-token";
 
 const PUBLIC_PATHS = [
-  /^\/login\/?$/,
+  /^\/login(\/reset)?\/?$/,
   /^\/api\/auth(\/|$)/,
   /^\/api\/webhooks\/ghl\/?$/,
   /^\/api\/cron\/learn\/?$/,

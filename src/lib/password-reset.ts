@@ -10,13 +10,14 @@
  * full-entropy and single use.
  */
 import { createHash, randomBytes } from "node:crypto";
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@/lib/password-limits";
 import { RESET_MINUTES } from "@/lib/reset-copy";
 
 export const RESET_TTL_MS = RESET_MINUTES * 60 * 1000;
 export const RATE_WINDOW_MS = 60 * 60 * 1000;
 export const MAX_IDENTIFIER_REQUESTS = 3;
 export const MAX_ADDRESS_REQUESTS = 10;
-export const MIN_PASSWORD_LENGTH = 12;
+export { MIN_PASSWORD_LENGTH };
 export const TOKEN_BYTES = 32;
 
 /** base64url of 32 bytes: 43 characters, no padding. */
@@ -179,7 +180,7 @@ export function checkPassword(password: unknown, accountEmail?: string | null): 
   const candidate = password.trim();
   if (!candidate) return { ok: false, code: "blank" };
   if (candidate.length < MIN_PASSWORD_LENGTH) return { ok: false, code: "too_short" };
-  if (candidate.length > 200) return { ok: false, code: "too_long" };
+  if (candidate.length > MAX_PASSWORD_LENGTH) return { ok: false, code: "too_long" };
 
   const normalized = lower(candidate);
   if (OBVIOUS.has(normalized)) return { ok: false, code: "too_obvious" };
