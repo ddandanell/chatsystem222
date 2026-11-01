@@ -53,6 +53,12 @@ Keep existing workspace header / `ConsoleNav` unless you add a shadcn `Sidebar` 
 - Client: identity, channel, tags; tag change re-drafts.
 - Why: sources list, reasoning, feedback form (reason codes + why + remember).
 
+## Colour: one theme
+
+There is one theme. No `.dark` block, no `@custom-variant dark`, no `dark:` utility. Tokens live in
+`:root`; the contrast baseline is pinned by `tests/no-dark-mode.test.ts`. See
+[one-theme.md](./one-theme.md).
+
 ## Acceptance
 
 - Open `/mychef/inbox` and `/mychef/inbox/[id]`: looks like a stock ops desk, not a markdown checklist.
