@@ -41,9 +41,9 @@ export async function loginAction(formData: FormData) {
     }
     return;
   }
+  // Local fallback: the form no longer carries a name field, so the account is the email alone.
   await signIn("credentials", {
     email,
-    name: formData.get("name"),
     redirectTo: callback ?? "/",
   });
 }
