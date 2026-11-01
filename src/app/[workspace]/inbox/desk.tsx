@@ -68,7 +68,10 @@ export async function MychefDesk({
   search: string;
 }) {
   const filter = parseFilter(filterRaw);
-  const inbox = await listDeskQueue(filter, page, search);
+  const [inbox, recorded] = await Promise.all([
+    listDeskQueue(filter, page, search),
+    selectedId ? getRecordedDecision(selectedId).catch(() => null) : Promise.resolve(null),
+  ]);
   const ids = inbox.rows.filter((row) => row.kind === "conversation").map((row) => row.id);
   const activeId = selectedId ?? null;
   const activeIndex = activeId ? ids.indexOf(activeId) : -1;
@@ -90,7 +93,6 @@ export async function MychefDesk({
   );
 
   if (activeId) {
-    const recorded = await getRecordedDecision(activeId).catch(() => null);
     if (recorded) {
       const action = outcomeAction.bind(null, recorded.id);
       workspace = (
@@ -185,16 +187,18 @@ export async function MychefDesk({
         const ensured = await ensureDraftForConversation(
           conversation.id,
           access.ctx.email || access.ctx.userId,
+          conversation,
         );
         if (!ensured.ok) draftError = ensured.error;
         else if (ensured.created && !ensured.draft) {
           draftError = ensured.error ?? "Could not load the AI draft.";
         }
-        conversation = (await getConversation(activeId)) ?? conversation;
+        if (ensured.ok && ensured.conversation) conversation = ensured.conversation;
       }
       if (conversation) {
         const knowledge = await listStoredKnowledge();
         const titles = Object.fromEntries(knowledge.map((doc) => [doc.id, doc.title]));
+        const statuses = Object.fromEntries(knowledge.map((doc) => [doc.id, doc.status]));
         const metrics = computeContactResponseMetrics(
           conversation.messages,
           conversation.last_message_at,
@@ -205,6 +209,7 @@ export async function MychefDesk({
             slug={slug}
             nextId={nextId}
             knowledgeTitles={titles}
+            knowledgeStatus={statuses}
             metrics={metrics}
             draftError={draftError}
             conversation={{

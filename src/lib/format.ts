@@ -15,11 +15,17 @@ export function formatWhenKl(value: Date | string | null | undefined): string {
   }).format(date);
 }
 
+/**
+ * Same instant, same string on the server and in the browser.
+ * A locale/timezone-derived string here produced a hydration mismatch on every
+ * conversation route (React #418) because the server renders in Asia/Kuala_Lumpur.
+ */
 export function formatWhen(value: Date | string | null | undefined): string {
   if (!value) return "—";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Kuala_Lumpur",
     month: "short",
     day: "numeric",
     hour: "numeric",
