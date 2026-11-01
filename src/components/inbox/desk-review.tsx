@@ -509,7 +509,15 @@ export function DeskReview({
     });
   }
 
-  useEffect(() => {
+  // Prop-driven resets belong to render, not a cascading effect after paint.
+  const [reviewInput, setReviewInput] = useState({
+    id: conversation.id, body: conversation.draft?.body,
+    tags: conversation.tags, draftError: initialDraftError,
+  });
+  if (reviewInput.id !== conversation.id || reviewInput.body !== conversation.draft?.body ||
+      reviewInput.tags !== conversation.tags || reviewInput.draftError !== initialDraftError) {
+    setReviewInput({ id: conversation.id, body: conversation.draft?.body,
+      tags: conversation.tags, draftError: initialDraftError });
     setDraftText(conversation.draft?.body ?? "");
     setEditing(false);
     setContextTab("client");
@@ -522,7 +530,7 @@ export function DeskReview({
     setError(null);
     setDraftError(initialDraftError);
     setSourceOpen(null);
-  }, [conversation.id, conversation.draft?.body, conversation.tags, initialDraftError]);
+  }
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
