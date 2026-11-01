@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { RecoverySheet } from "@/components/login/recovery-sheet";
 
 const ERROR_TEXT: Record<string, { title: string; body: string }> = {
   credentials: {
@@ -199,6 +200,10 @@ export function LoginCard({
                   Passwords are checked against the stored hash, never sent anywhere else.
                 </FieldDescription>
               </Field>
+
+              <div className="flex justify-end">
+                <RecoverySheet />
+              </div>
             </FieldGroup>
           </FieldSet>
         </CardContent>
