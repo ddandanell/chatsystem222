@@ -1,11 +1,16 @@
 /**
  * Auth.js credentials. Neon requires an approved operator. Do not auto-send.
+ *
+ * SEC-001: the session is 12 hours from sign-in and does not renew itself. `maxAge` bounds the
+ * JWT/cookie, and `applySessionWindow` refuses a token whose first-issue stamp is 12 hours old, so
+ * the rolling refresh Auth.js performs cannot extend a session indefinitely.
  */
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { userIdFromEmail, usesMychefInbox } from "@/db/mode";
 import { verifyOperator } from "@/lib/operators";
+import { SESSION_MAX_AGE_SECONDS, applySessionWindow } from "@/lib/session-ttl";
 import { findOrCreateUser } from "@/lib/workspace-access";
 
 const googleEnabled = Boolean(
@@ -20,7 +25,7 @@ export const clerkConfigured = Boolean(
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: SESSION_MAX_AGE_SECONDS },
   pages: { signIn: "/login" },
   providers: [
     Credentials({
@@ -60,9 +65,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (account?.provider === "google" && user?.email) {
         const row = await findOrCreateUser(user.email, user.name ?? null);
         token.sub = row.id;
-        return token;
+      } else if (user?.id) {
+        token.sub = user.id;
       }
-      if (user?.id) token.sub = user.id;
+      // Absolute 12-hour cap. Returning null discards the session, so the next request is
+      // treated as signed out and the operator signs in again.
+      const windowed = applySessionWindow(token, Math.floor(Date.now() / 1000));
+      if (!windowed) return null;
+      token.authAt = windowed.authAt;
       return token;
     },
     async session({ session, token }) {
