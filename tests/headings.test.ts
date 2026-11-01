@@ -95,7 +95,21 @@ test("the routes without a visible subject heading use a screen-reader h1 until 
     /className="sr-only"/,
     "dashboard's subject is visible now, so it must not also carry a screen-reader duplicate",
   );
-  assert.match(read("src/app/[workspace]/inbox/page.tsx"), /<h1 className="sr-only">Inbox<\/h1>/);
+  // Flipped 2026-11-01: MychefDesk renders the route's single h1 from the conversation row, so the
+  // page must add none. Asserted on the desk branch only: the legacy tenant branch below keeps its
+  // own visible <h1>Review queue</h1>, and that branch never renders the desk.
+  const inboxPage = read("src/app/[workspace]/inbox/page.tsx");
+  const deskBranch = inboxPage.slice(
+    inboxPage.indexOf("if (usesMychefInbox())"),
+    inboxPage.indexOf("<MychefDesk"),
+  );
+  assert.ok(deskBranch.length > 0, "the desk branch must still exist");
+  assert.doesNotMatch(
+    deskBranch,
+    /<h1[\s>]/,
+    "inbox/page.tsx must not declare an h1 in the MychefDesk branch: the desk already renders it",
+  );
+  assert.match(read("src/app/[workspace]/inbox/desk.tsx"), /<h1 className="sr-only">/);
 });
 
 test("the thread's h1 names the open conversation, not the word Draft", () => {
