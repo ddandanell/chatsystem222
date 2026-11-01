@@ -87,23 +87,24 @@ test("eviction never clears the whole window, which is what an abusive client wa
   assert.ok(window.size > 400, `expected most counters kept, got ${window.size}`);
 });
 
-test("the reset page is served with Referrer-Policy: no-referrer", async () => {
+const NO_REFERRER_PATHS = ["/login", "/login/reset"];
+
+test("both sign-in and reset are served with Referrer-Policy: no-referrer", async () => {
   const rules = (await nextConfig.headers?.()) ?? [];
-  const rule = rules.find((entry) => entry.source === "/login/reset");
-  assert.ok(rule, "no header rule for /login/reset");
-  const header = rule.headers.find((h) => h.key.toLowerCase() === "referrer-policy");
-  assert.ok(header, "no Referrer-Policy on /login/reset");
-  assert.equal(header.value, "no-referrer");
+  for (const path of NO_REFERRER_PATHS) {
+    const rule = rules.find((entry) => entry.source === path);
+    assert.ok(rule, `no header rule for ${path}`);
+    const header = rule.headers.find((h) => h.key.toLowerCase() === "referrer-policy");
+    assert.ok(header, `no Referrer-Policy on ${path}`);
+    assert.equal(header.value, "no-referrer", `wrong Referrer-Policy on ${path}`);
+  }
 });
 
-test("the no-referrer rule does not spread to the whole site", async () => {
+test("no other rule carries Referrer-Policy, so the console is untouched", async () => {
   const rules = (await nextConfig.headers?.()) ?? [];
-  const broad = rules.filter((entry) => entry.source === "/(.*)" || entry.source === "/:path*");
-  for (const entry of broad) {
-    assert.equal(
-      entry.headers.some((h) => h.key.toLowerCase() === "referrer-policy"),
-      false,
-      "Referrer-Policy must not be set site-wide by this change",
-    );
-  }
+  const carrying = rules
+    .filter((entry) => entry.headers.some((h) => h.key.toLowerCase() === "referrer-policy"))
+    .map((entry) => entry.source)
+    .sort();
+  assert.deepEqual(carrying, [...NO_REFERRER_PATHS].sort());
 });
