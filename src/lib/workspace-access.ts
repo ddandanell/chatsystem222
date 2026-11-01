@@ -114,9 +114,12 @@ export async function authorizeWorkspace(
   };
 }
 
-export async function listMyWorkspaces(userId: string) {
+export async function listMyWorkspaces(userId: string, email?: string | null) {
   if (usesMychefInbox()) {
-    return [{ slug: "mychef", name: "myCHEF", role: "owner" }];
+    // The signed-in operator's own row decides what this list says. It used to say "owner" to
+    // everyone, so a reviewer and a viewer were both told they owned the workspace.
+    const operator = await findOperator(email ?? "");
+    return [{ slug: "mychef", name: "myCHEF", role: operator?.role ?? "viewer" }];
   }
   const rows = await appDb
     .select({

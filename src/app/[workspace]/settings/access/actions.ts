@@ -24,7 +24,8 @@ export async function saveOperatorAction(slug: string, formData: FormData) {
     email: String(formData.get("email") ?? ""),
     name: String(formData.get("name") ?? ""),
     password: String(formData.get("password") ?? ""),
-    role: roleOf(String(formData.get("role") ?? "reviewer")),
+    // A form that sends no role must not mint a reviewer. Least privilege is the default.
+    role: roleOf(String(formData.get("role") ?? "viewer")),
     approved: formData.get("approved") === "on",
   });
   revalidatePath(`/${slug}/settings/access`);
