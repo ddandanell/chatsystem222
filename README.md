@@ -4,9 +4,9 @@ Review drafted client replies and record why a reply was right or wrong. The con
 
 **No auto-send.** Approving a draft writes the ledger. It does not message the guest. Auto-pilot defaults off. Phases 3–5 (menu engine, business intelligence, full autopilot) are not started.
 
-Current branch: `cursor/decision-ledger-console-d800`.
+Branch: `main`.
 
-Canonical GitHub: [numini-co/inbox-mychef](https://github.com/numini-co/inbox-mychef). Deploy notes: [documentation/deploy/github-vercel.md](./documentation/deploy/github-vercel.md).
+Canonical GitHub: [ddandanell/chatsystem222](https://github.com/ddandanell/chatsystem222). Deploy notes: [documentation/local-and-vercel.md](./documentation/local-and-vercel.md).
 
 Product docs in this repo: [documentation/](./documentation/).
 
@@ -15,9 +15,8 @@ Neon schema in use: `mychef_inbox` on database `mychef`, role `mychef_runtime`. 
 ## How to run
 
 ```bash
-git clone https://github.com/numini-co/inbox-mychef.git
-cd inbox-mychef
-git checkout cursor/decision-ledger-console-d800
+git clone https://github.com/ddandanell/chatsystem222.git
+cd chatsystem222
 npm install
 cp .env.example .env.local
 # Put real values only in .env.local. Never commit that file.
@@ -59,7 +58,7 @@ Optional:
 | Name | Used for |
 |------|----------|
 | `CRON_SECRET` | Bearer token for `GET /api/cron/learn`. When empty, the route refuses the call. |
-| `GHL_WEBHOOK_SECRET` | Shared secret for `POST /api/webhooks/ghl`. When empty, the stub stores the body and does not send. |
+| `GHL_WEBHOOK_SECRET` | Shared secret for `POST /api/webhooks/ghl`. When empty the endpoint refuses every event (503); it used to accept anything. See [documentation/webhook-security.md](./documentation/webhook-security.md). |
 | `MIGRATION_DATABASE_URL` | Local Docker migrations only. Do not point this at Neon. |
 
 ## Vercel
@@ -68,19 +67,19 @@ Optional:
 
 Set the required names above on the Vercel project, plus `CRON_SECRET` if the cron should run and `GHL_WEBHOOK_SECRET` if the webhook should require a shared secret. Set `AUTH_URL` to the deployment URL. Leave automatic sending off. Phases 3–5 are not part of this deploy.
 
-Deploy branch `cursor/decision-ledger-console-d800`. Link the GitHub repo so pushes auto-deploy ([documentation/deploy/github-vercel.md](./documentation/deploy/github-vercel.md)). Permanent Numini project create waits on Vercel MCP + SSO. GitHub Actions CI builds only; it does not deploy. `npm start` on a laptop still uses port 4317.
+Production branch `main`: the Vercel Git integration deploys every push to it ([documentation/local-and-vercel.md](./documentation/local-and-vercel.md)). GitHub Actions CI runs `npm test`, `npm run typecheck` and `npm run build`; it does not deploy. The console is currently served on the generated domain `https://inbox-mychef-gilt.vercel.app`; no custom domain is attached. `npm start` on a laptop still uses port 4317.
 
 ## Architecture
 
 Start with the store handoff, then the repo summary in [docs/HANDOFF.md](docs/HANDOFF.md).
 
-- Handoff: `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md`
-- Roadmap (phases 1–2 only): `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/roadmap.md`
-- Inbox UX: `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md`
-- Learning queue / CBLS: `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/cbls-architecture.md`
-- Near-term steps: `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/todo.md`
-- Notes: `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/notes.md`
-- Preferences: `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/preferences.md`
+- Handoff: [documentation/handoff.md](./documentation/handoff.md)
+- Roadmap (phases 1–2 only): [documentation/roadmap.md](./documentation/roadmap.md)
+- Inbox UX: [documentation/inbox-ux.md](./documentation/inbox-ux.md)
+- Learning queue / CBLS: [documentation/cbls-architecture.md](./documentation/cbls-architecture.md)
+- Near-term steps: [documentation/todo.md](./documentation/todo.md)
+- Knowledge retrieval policy: [documentation/retrieval-policy.md](./documentation/retrieval-policy.md)
+- Webhook security: [documentation/webhook-security.md](./documentation/webhook-security.md)
 
 Settings that are accepted on this branch:
 
