@@ -20,6 +20,7 @@ import {
   MobileLockup,
   SupportFooter,
 } from "@/components/login/brand-panel";
+import { EnvironmentBadge } from "@/components/environment-badge";
 import { LoginCard } from "@/components/login/login-card";
 import { usesMychefInbox } from "@/db/mode";
 import { safeCallbackTarget } from "@/lib/login-callback";
@@ -67,6 +68,7 @@ export default async function LoginPage({
           </div>
 
           <SupportFooter />
+          <EnvironmentBadge className="mt-3 self-start" />
         </div>
       </div>
     </main>

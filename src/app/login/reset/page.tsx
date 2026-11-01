@@ -9,6 +9,7 @@
  * instead of a form that fails on submit.
  */
 import { BrandPanel, MobileLockup, SupportFooter } from "@/components/login/brand-panel";
+import { EnvironmentBadge } from "@/components/environment-badge";
 import { ResetForm, ResetUnavailable } from "@/components/login/reset-form";
 import {
   Card,
@@ -71,6 +72,7 @@ export default async function ResetPage({
           </div>
 
           <SupportFooter />
+          <EnvironmentBadge className="mt-3 self-start" />
         </div>
       </div>
     </main>
