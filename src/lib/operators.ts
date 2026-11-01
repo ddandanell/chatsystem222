@@ -5,17 +5,26 @@ import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:cry
 import { promisify } from "node:util";
 import { appPool } from "@/db/client";
 import { usesMychefInbox } from "@/db/mode";
+import { operatorRole, type Role } from "@/lib/roles";
 
 const scrypt = promisify(scryptCallback);
 const WORKSPACE = "mychef";
 
-export type OperatorRole = "owner" | "admin" | "reviewer";
+/**
+ * The same set as a workspace role, including viewer.
+ *
+ * "viewer" is a member: an operator row may say viewer and it must stay viewer. It used to fall
+ * through a three-value allowlist into reviewer, which can draft and record decisions.
+ */
+export type OperatorRole = Role;
 
 export type Operator = {
   email: string;
   name: string;
   role: OperatorRole;
   approved: boolean;
+  /** The row's own switch, kept separate from `approved` so the directory can tell the two apart. */
+  enabled: boolean;
 };
 
 type OperatorConfig = {
@@ -31,8 +40,8 @@ function operatorId(email: string) {
 }
 
 function asRole(value: string | undefined): OperatorRole {
-  if (value === "owner" || value === "admin" || value === "reviewer") return value;
-  return "reviewer";
+  // Unrecognised jsonb resolves to viewer (read-only), never to reviewer (can write).
+  return operatorRole(value);
 }
 
 export async function hashPassword(password: string): Promise<string> {
@@ -59,6 +68,7 @@ function toOperator(id: string, config: OperatorConfig | null, enabled: boolean)
     name: config.name?.trim() || email,
     role: asRole(config.role),
     approved: enabled && config.approved !== false,
+    enabled,
   };
 }
 

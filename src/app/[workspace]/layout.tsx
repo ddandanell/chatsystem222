@@ -73,7 +73,7 @@ async function WorkspaceChrome({ workspace }: { workspace: string }) {
   }
 
   const ctx = access.ctx;
-  const workspaces = await listMyWorkspaces(ctx.userId);
+  const workspaces = await listMyWorkspaces(ctx.userId, ctx.email);
   const autopilot = usesMychefInbox()
     ? await readAutopilot()
     : { enabled: false, confidenceThreshold: 0.8 };

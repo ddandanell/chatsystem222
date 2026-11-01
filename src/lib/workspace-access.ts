@@ -5,9 +5,13 @@ import { and, eq, sql } from "drizzle-orm";
 import { appDb } from "@/db/client";
 import { usesMychefInbox } from "@/db/mode";
 import { findOperator } from "@/lib/operators";
+import { canManageKeys, canReview, parseRole, type Role } from "@/lib/roles";
 import { memberships, organizations, users } from "@/db/schema";
 
-export type Role = "owner" | "admin" | "reviewer" | "viewer";
+// The role type and the capability rules live in roles.ts so they can be tested without a pool.
+// Re-exported here because every call site already imports them from this module.
+export { canManageKeys, canReview };
+export type { Role };
 
 export type WorkspaceContext = {
   userId: string;
@@ -24,11 +28,12 @@ export type WorkspaceAccess =
   | { status: "unknown" }
   | { status: "forbidden"; orgName: string; orgSlug: string };
 
-const ROLES = new Set<Role>(["owner", "admin", "reviewer", "viewer"]);
-
 function asRole(value: string): Role {
-  if (ROLES.has(value as Role)) return value as Role;
-  throw new Error(`unexpected role ${value}`);
+  const role = parseRole(value);
+  // A membership row's role is checked by the local schema, so an unknown one is a data fault and
+  // must fail loudly rather than quietly become a role with different powers.
+  if (!role) throw new Error(`unexpected role ${value}`);
+  return role;
 }
 
 export async function findOrCreateUser(email: string, name: string | null) {
@@ -109,9 +114,12 @@ export async function authorizeWorkspace(
   };
 }
 
-export async function listMyWorkspaces(userId: string) {
+export async function listMyWorkspaces(userId: string, email?: string | null) {
   if (usesMychefInbox()) {
-    return [{ slug: "mychef", name: "myCHEF", role: "owner" }];
+    // The signed-in operator's own row decides what this list says. It used to say "owner" to
+    // everyone, so a reviewer and a viewer were both told they owned the workspace.
+    const operator = await findOperator(email ?? "");
+    return [{ slug: "mychef", name: "myCHEF", role: operator?.role ?? "viewer" }];
   }
   const rows = await appDb
     .select({
@@ -124,12 +132,4 @@ export async function listMyWorkspaces(userId: string) {
     .where(eq(memberships.userId, userId))
     .orderBy(organizations.name);
   return rows;
-}
-
-export function canReview(role: Role): boolean {
-  return role === "owner" || role === "admin" || role === "reviewer";
-}
-
-export function canManageKeys(role: Role): boolean {
-  return role === "owner" || role === "admin";
 }
