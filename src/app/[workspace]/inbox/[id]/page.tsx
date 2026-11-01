@@ -38,13 +38,17 @@ export default async function DecisionPage({
     const search = typeof query.q === "string" ? query.q : "";
     const filter = typeof query.filter === "string" ? query.filter : undefined;
     return (
-      <MychefDesk
-        slug={access.ctx.orgSlug}
-        selectedId={id}
-        filterRaw={filter}
-        page={page}
-        search={search}
-      />
+      <>
+        {/* MychefDesk owns the three panes; the route's own subject heading stays here (MC-022). */}
+        <h1 className="sr-only">Draft</h1>
+        <MychefDesk
+          slug={access.ctx.orgSlug}
+          selectedId={id}
+          filterRaw={filter}
+          page={page}
+          search={search}
+        />
+      </>
     );
   }
   const decision = await getDecision(access.ctx.orgId, id);
@@ -59,6 +63,7 @@ export default async function DecisionPage({
 
   return (
     <div className="flex flex-col gap-6">
+      <h1 className="sr-only">Draft</h1>
       <div className="flex flex-wrap items-center gap-3">
         <Link
           href={`/${access.ctx.orgSlug}/inbox`}

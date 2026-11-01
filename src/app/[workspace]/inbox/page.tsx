@@ -46,12 +46,16 @@ export default async function InboxPage({
     const search = typeof query.q === "string" ? query.q : "";
     const filter = typeof query.filter === "string" ? query.filter : undefined;
     return (
-      <MychefDesk
-        slug={access.ctx.orgSlug}
-        filterRaw={filter}
-        page={page}
-        search={search}
-      />
+      <>
+        {/* MychefDesk owns the visible panes; the page subject is this route's, so it stays here. */}
+        <h1 className="sr-only">Inbox</h1>
+        <MychefDesk
+          slug={access.ctx.orgSlug}
+          filterRaw={filter}
+          page={page}
+          search={search}
+        />
+      </>
     );
   }
   const rows = await listDecisions(access.ctx.orgId, status);
@@ -61,7 +65,7 @@ export default async function InboxPage({
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-medium tracking-tight">Review queue</h2>
+          <h1 className="text-2xl font-medium tracking-tight">Review queue</h1>
           <p className="text-sm text-muted-foreground">
             Inbound text stays as it arrived. You record what should have been sent.
           </p>

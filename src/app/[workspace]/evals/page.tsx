@@ -47,7 +47,7 @@ export default async function EvalsPage({
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-medium tracking-tight">Eval cases</h2>
+          <h1 className="text-2xl font-medium tracking-tight">Eval cases</h1>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
             The local drafter runs each case. A case passes when the draft contains the required phrase and omits the forbidden one. No provider is called.
           </p>

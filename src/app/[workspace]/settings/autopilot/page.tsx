@@ -30,7 +30,7 @@ export default async function AutopilotPage({
   return (
     <div className="flex max-w-xl flex-col gap-5">
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-medium tracking-tight">Auto-pilot</h2>
+        <h1 className="text-2xl font-medium tracking-tight">Auto-pilot</h1>
         <p className="text-sm leading-6 text-muted-foreground">
           The switch starts off. While it is off, every draft stays pending. If you turn it on, a draft can be marked auto_sent_candidate only when its confidence is at least the threshold and it does not need a person. That mark does not send a message.
         </p>

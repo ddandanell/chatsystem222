@@ -40,7 +40,7 @@ export default async function KnowledgePage({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-medium tracking-tight">Knowledge</h2>
+        <h1 className="text-2xl font-medium tracking-tight">Knowledge</h1>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
           {stored.length > 0
             ? "Positions and playbooks stored for this workspace. Retrieval uses these documents."
@@ -92,7 +92,7 @@ async function MychefKnowledge({ slug, group }: { slug: string; group: string })
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-medium tracking-tight">Knowledge</h2>
+        <h1 className="text-2xl font-medium tracking-tight">Knowledge</h1>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
           These are the existing knowledge rows for myCHEF. Groups are a reading filter. The source rows stay where they are.
         </p>
