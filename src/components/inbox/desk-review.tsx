@@ -25,6 +25,7 @@ import {
   reviewConversationAction,
   updateTagsAction,
 } from "@/app/[workspace]/inbox/mychef-actions";
+import { AgentPanel } from "@/components/inbox/agent-panel";
 import { CategoryBadge } from "@/components/inbox/category-badge";
 import { DiffText } from "@/components/inbox/diff-text";
 import { TimeStrip } from "@/components/inbox/time-strip";
@@ -611,6 +612,12 @@ export function DeskReview({
             <CategoryBadge key={id} id={id} />
           ))}
           <div className="ml-auto flex items-center gap-2">
+            <AgentPanel
+              conversationId={conversation.id}
+              contactName={conversation.contact_name}
+              channel={conversation.channel}
+              messageCount={conversation.messages.length}
+            />
             <Button
               type="button"
               size="sm"
