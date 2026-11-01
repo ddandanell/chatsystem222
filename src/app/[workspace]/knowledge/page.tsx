@@ -13,7 +13,7 @@ import {
 import { addPosition, listStoredKnowledge } from "@/data/mychef-store";
 import { usesMychefInbox } from "@/db/mode";
 import { getWorkspaceAccess } from "@/lib/context";
-import { KNOWLEDGE_GROUPS, isKnowledgeGroup } from "@/lib/knowledge-groups";
+import { KNOWLEDGE_FILTER_GROUPS, KNOWLEDGE_GROUPS, isKnowledgeGroup, isKnowledgeGroupFilter } from "@/lib/knowledge-groups";
 import { listKnowledge } from "@/lib/knowledge";
 import { listOrgDocuments, type WorkspaceDocument } from "@/lib/workspace-documents";
 
@@ -86,7 +86,7 @@ async function addPositionAction(formData: FormData) {
 
 async function MychefKnowledge({ slug, group }: { slug: string; group: string }) {
   const docs = await listStoredKnowledge();
-  const filtered = isKnowledgeGroup(group) ? docs.filter((doc) => doc.group === group) : docs;
+  const filtered = isKnowledgeGroupFilter(group) ? docs.filter((doc) => doc.group === group) : docs;
   const positions = filtered.filter((doc) => doc.kind === "position");
   const playbooks = filtered.filter((doc) => doc.kind === "playbook");
   return (
@@ -101,7 +101,7 @@ async function MychefKnowledge({ slug, group }: { slug: string; group: string })
         <Link href={`/${slug}/knowledge`} className={buttonVariants({ variant: group ? "ghost" : "secondary", size: "sm" })}>
           All
         </Link>
-        {KNOWLEDGE_GROUPS.map((item) => (
+        {KNOWLEDGE_FILTER_GROUPS.map((item) => (
           <Link
             key={item.id}
             href={`/${slug}/knowledge?group=${item.id}`}
