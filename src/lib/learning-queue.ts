@@ -5,9 +5,9 @@
  * Suggested) and parse AI vs human evidence from proposal content.
  * Tables: reads shapes written into mychef_inbox.knowledge (learning-pass /
  * ledger-rule / situational). Does not auto-activate or send.
- * Docs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/cbls-architecture.md
- *       /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
- *       /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/learning-queue.md
+ * Docs: documentation/cbls-architecture.md
+ *       documentation/handoff.md
+ *       documentation/learning-queue.md
  */
 
 export const QUEUE_TYPES = [
