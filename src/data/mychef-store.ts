@@ -45,10 +45,12 @@ import {
   REASON_FILTERS,
   STATE_FILTERS,
   bucketCaseSql,
+  decisionCoversSql,
   emptyFilterCounts,
   isReasonFilter,
-  reasonPredicate,
-  stateWhereSql,
+  lensWhereSql,
+  queueWhereSql,
+  visibleConversationSql,
   type DeskFilter,
   type DeskFilterCounts,
 } from "@/lib/desk-filters";
@@ -84,11 +86,7 @@ export async function dashboardCounts() {
        (select count(*) from mychef_inbox.messages where workspace_id = $1) as messages,
        (select count(*) from mychef_inbox.knowledge where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')) as knowledge,
        (select count(*) from mychef_inbox.conversations c
-         where c.workspace_id = $1 and c.status = 'needs_reply'
-           and not exists (
-             select 1 from mychef_inbox.decision_records d
-             where d.workspace_id = c.workspace_id and d.conversation_id = c.id
-           )) as needs_reply,
+         where c.workspace_id = $1 and (${queueWhereSql("needs_reply")})) as needs_reply,
        (select count(*) from mychef_inbox.decision_records where workspace_id = $1) as decisions,
        (select count(*) from mychef_inbox.knowledge where workspace_id = $1 and source in ('ledger-rule', 'learning-pass') and status = 'pending') as candidates`,
     [MYCHEF_WORKSPACE],
@@ -220,15 +218,11 @@ export async function listInbox(
   const totalRows = await query<{ n: string }>(
     `select count(*)::text as n
      from mychef_inbox.conversations c
-     join mychef_inbox.contacts ct
+     left join mychef_inbox.contacts ct
        on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
      where c.workspace_id = $1
-       and c.status = 'needs_reply'
        and ($2::text = '' or ct.name ilike '%' || $2 || '%')
-       and not exists (
-         select 1 from mychef_inbox.decision_records d
-         where d.workspace_id = c.workspace_id and d.conversation_id = c.id
-       )`,
+       and (${queueWhereSql("needs_reply")})`,
     [MYCHEF_WORKSPACE, needle],
   );
   const total = Number(totalRows[0]?.n ?? 0);
@@ -247,7 +241,7 @@ export async function listInbox(
             left(dr.body, 180) as draft,
             c.last_message_at
      from mychef_inbox.conversations c
-     join mychef_inbox.contacts ct
+     left join mychef_inbox.contacts ct
        on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
      left join lateral (
        select body from mychef_inbox.messages
@@ -260,12 +254,8 @@ export async function listInbox(
        order by created_at desc limit 1
      ) dr on true
      where c.workspace_id = $1
-       and c.status = 'needs_reply'
        and ($2::text = '' or ct.name ilike '%' || $2 || '%')
-       and not exists (
-         select 1 from mychef_inbox.decision_records d
-         where d.workspace_id = c.workspace_id and d.conversation_id = c.id
-       )
+       and (${queueWhereSql("needs_reply")})
      order by c.last_message_at desc nulls last
      limit $3 offset $4`,
     [MYCHEF_WORKSPACE, needle, PAGE_SIZE, offset],
@@ -383,9 +373,16 @@ export async function getConversation(id: string) {
      limit 1`,
     [MYCHEF_WORKSPACE, id],
   );
-  const decisions = await query<{ id: string }>(
-    `select id::text as id from mychef_inbox.decision_records
-     where workspace_id = $1 and conversation_id = $2
+  // MC-182 / CS-001: `decided` is turn-bound. A decision covers the turn when no inbound message is
+  // newer than it, so a guest follow-up re-opens the thread instead of being refused for ever.
+  const decisions = await query<{ id: string; covers: boolean }>(
+    `select d.id::text as id,
+            case when ${decisionCoversSql("c")} then true else false end as covers
+     from mychef_inbox.decision_records d
+     join mychef_inbox.conversations c
+       on c.workspace_id = d.workspace_id and c.id = d.conversation_id
+     where d.workspace_id = $1 and d.conversation_id = $2
+     order by d.created_at desc, d.id desc
      limit 1`,
     [MYCHEF_WORKSPACE, id],
   );
@@ -407,7 +404,7 @@ export async function getConversation(id: string) {
           escalate: meta.escalate,
         }
       : null,
-    decided: Boolean(decisions[0]),
+    decided: decisions[0]?.covers === true,
   };
 }
 
@@ -735,6 +732,23 @@ export async function reviewConversation(
   const client = await appPool.connect();
   try {
     await client.query("begin");
+    // The row lock comes before every write, and it is on the conversation row: two operators
+    // pressing Approve at the same instant cannot both pass the turn check below.
+    const locked = await client.query<{ covered: boolean }>(
+      `select ${decisionCoversSql("c")} as covered
+       from mychef_inbox.conversations c
+       where c.workspace_id = $1 and c.id = $2
+       for update`,
+      [MYCHEF_WORKSPACE, conversationId],
+    );
+    if (locked.rowCount === 0) {
+      await client.query("rollback");
+      return { ok: false as const, error: "That conversation is not in this workspace." };
+    }
+    if (locked.rows[0]?.covered) {
+      await client.query("rollback");
+      return { ok: false as const, error: "This conversation was already reviewed." };
+    }
     const feedback = await client.query<{ id: string }>(
       `insert into mychef_inbox.feedback
          (workspace_id, conversation_id, scope, note, original_draft, edited_draft, author_id)
@@ -823,6 +837,15 @@ export async function reviewConversation(
         ],
       );
     }
+    // CS round 3: the verdict is what moves the thread out of the queue. `ghl-inbound.ts` puts it
+    // back to 'needs_reply' when the guest writes again, so the status column and the ledger agree
+    // and the badge counts the column instead of subtracting decision rows.
+    await client.query(
+      `update mychef_inbox.conversations
+          set status = 'waiting'
+        where workspace_id = $1 and id = $2 and status = 'needs_reply'`,
+      [MYCHEF_WORKSPACE, conversationId],
+    );
     await client.query("commit");
     return { ok: true as const, id: decisionId };
   } catch (error) {
@@ -869,7 +892,6 @@ export async function listDeskQueue(
   const needle = search.trim().replace(/[%_]/g, "");
 
   if (isReasonFilter(filter)) {
-    const predicate = reasonPredicate(filter);
     const totalRows = await query<{ n: string }>(
       `select count(*)::text as n
        from mychef_inbox.decision_records d
@@ -878,7 +900,7 @@ export async function listDeskQueue(
        left join mychef_inbox.contacts ct
          on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
        where d.workspace_id = $1
-         and (${predicate})
+         and (${lensWhereSql(filter)})
          and ($2::text = '' or ct.name ilike '%' || $2 || '%')`,
       [MYCHEF_WORKSPACE, needle],
     );
@@ -908,7 +930,7 @@ export async function listDeskQueue(
          order by created_at desc limit 1
        ) m on true
        where d.workspace_id = $1
-         and (${predicate})
+         and (${lensWhereSql(filter)})
          and ($2::text = '' or ct.name ilike '%' || $2 || '%')
        order by d.created_at desc
        limit $3 offset $4`,
@@ -937,17 +959,16 @@ export async function listDeskQueue(
     };
   }
 
-  const stateWhere = stateWhereSql(filter);
   const bucket = `(${bucketCaseSql()})`;
 
   const totalRows = await query<{ n: string }>(
     `select count(*)::text as n
      from mychef_inbox.conversations c
-     join mychef_inbox.contacts ct
+     left join mychef_inbox.contacts ct
        on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
      where c.workspace_id = $1
        and ($2::text = '' or ct.name ilike '%' || $2 || '%')
-       and (${stateWhere})`,
+       and (${queueWhereSql(filter)})`,
     [MYCHEF_WORKSPACE, needle],
   );
   const total = Number(totalRows[0]?.n ?? 0);
@@ -966,7 +987,7 @@ export async function listDeskQueue(
     `select c.id, ct.name, left(m.body, 160) as inbound, c.last_message_at,
             ct.facts, c.channel, dr.source_ids, ${bucket} as bucket
      from mychef_inbox.conversations c
-     join mychef_inbox.contacts ct
+     left join mychef_inbox.contacts ct
        on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
      left join lateral (
        select body from mychef_inbox.messages
@@ -980,7 +1001,7 @@ export async function listDeskQueue(
      ) dr on true
      where c.workspace_id = $1
        and ($2::text = '' or ct.name ilike '%' || $2 || '%')
-       and (${stateWhere})
+       and (${queueWhereSql(filter)})
      order by c.last_message_at desc nulls last
      limit $3 offset $4`,
     [MYCHEF_WORKSPACE, needle, PAGE_SIZE, offset],
@@ -1027,9 +1048,10 @@ export async function deskFilterCounts(search = ""): Promise<DeskFilterCounts> {
             count(*) filter (where ${bucket} = 'decided')::text as decided,
             count(*) filter (where ${bucket} = 'closed')::text as closed
      from mychef_inbox.conversations c
-     join mychef_inbox.contacts ct
+     left join mychef_inbox.contacts ct
        on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
      where c.workspace_id = $1
+       and (${visibleConversationSql("c")})
        and ($2::text = '' or ct.name ilike '%' || $2 || '%')`,
     [MYCHEF_WORKSPACE, needle],
   );
@@ -1040,8 +1062,8 @@ export async function deskFilterCounts(search = ""): Promise<DeskFilterCounts> {
   }
 
   const decisionRows = await query<Record<string, string>>(
-    `select count(*) filter (where ${reasonPredicate("escalated")})::text as escalated,
-            count(*) filter (where ${reasonPredicate("auto_sent")})::text as auto_sent
+    `select count(*) filter (where ${lensWhereSql("escalated")})::text as escalated,
+            count(*) filter (where ${lensWhereSql("auto_sent")})::text as auto_sent
      from mychef_inbox.decision_records d
      left join mychef_inbox.conversations c
        on c.workspace_id = d.workspace_id and c.id = d.conversation_id
