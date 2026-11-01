@@ -1,20 +1,29 @@
 /**
- * Lists audit_log for the workspace. Do not auto-send.
+ * Lists audit_log for the workspace, with the actor. Do not auto-send.
+ *
+ * QA-W6-04: this page used to map listAudit() rows down to {id, when, kind, summary}, so
+ * actor_id was selected by the query and then dropped here. Every row now carries its actor
+ * (see src/lib/audit-view.ts). On the Neon path the value always exists; on the self-hosted
+ * path feedback_events and rules carry an owner, and audit_events has no actor column at all,
+ * which is shown as "not recorded" rather than as a blank.
+ *
+ * The page keeps its own h1 (MC-022): the list is a component so its output can be rendered in a
+ * test, but the route heading stays here, where the route declares it.
  */
-import { desc } from "drizzle-orm";
+import { desc, inArray } from "drizzle-orm";
+import { AuditList } from "@/components/audit-list";
 import { listAudit } from "@/data/mychef-store";
 import { usesMychefInbox } from "@/db/mode";
-import { auditEvents, feedbackEvents, rules } from "@/db/schema";
+import { auditEvents, feedbackEvents, rules, users } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
-import { Badge } from "@/components/ui/badge";
 import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from "@/components/ui/empty";
+  NOT_RECORDED_ACTOR,
+  auditActorLabel,
+  sortAuditRows,
+  toAuditRowView,
+  type AuditRowView,
+} from "@/lib/audit-view";
 import { getWorkspaceAccess } from "@/lib/context";
-import { formatWhen } from "@/lib/format";
 import { reasonLabel } from "@/lib/reason-codes";
 
 export const metadata = { title: "Audit" };
@@ -26,54 +35,63 @@ export default async function AuditPage({
   const access = await getWorkspaceAccess(workspace);
   if (access.status !== "ok") return null;
 
+  let rows: AuditRowView[];
+
   if (usesMychefInbox()) {
-    const rows = await listAudit();
-    return (
-      <AuditList
-        rows={rows.map((row) => ({
+    const audit = await listAudit();
+    rows = audit.map(toAuditRowView);
+  } else {
+    rows = await withTenant(access.ctx.orgId, async (tx) => {
+      const feedback = await tx
+        .select()
+        .from(feedbackEvents)
+        .orderBy(desc(feedbackEvents.createdAt));
+      const events = await tx.select().from(auditEvents).orderBy(desc(auditEvents.createdAt));
+      const ruleRows = await tx.select().from(rules).orderBy(desc(rules.createdAt));
+
+      const actorIds = [
+        ...new Set(
+          [...feedback.map((row) => row.actorId), ...ruleRows.map((row) => row.ownerId)].filter(
+            (value): value is string => Boolean(value),
+          ),
+        ),
+      ];
+      const actors = actorIds.length
+        ? await tx
+            .select({ id: users.id, email: users.email, name: users.name })
+            .from(users)
+            .where(inArray(users.id, actorIds))
+        : [];
+      const actorById = new Map(actors.map((row) => [row.id, row.name ?? row.email]));
+
+      return sortAuditRows([
+        ...feedback.map((row) => ({
           id: row.id,
-          when: row.created_at,
-          kind: row.action.startsWith("rule:") ? "rule" : row.action.startsWith("outcome:") ? "outcome" : row.action,
-          summary: `${row.action} · ${row.record_id}`,
-        }))}
-      />
-    );
+          when: row.createdAt,
+          kind: "feedback",
+          actor: auditActorLabel(row.actorId ? (actorById.get(row.actorId) ?? row.actorId) : null),
+          summary: `${row.humanDecision} · ${reasonLabel(row.reasonCode)} · ${row.rationale ?? ""}`,
+        })),
+        ...events.map((row) => ({
+          id: row.id,
+          when: row.createdAt,
+          kind: row.kind,
+          // audit_events has no actor column, so there is no identity to print. Saying so is
+          // honest; a blank cell would read as "nobody wrote this".
+          actor: NOT_RECORDED_ACTOR,
+          summary: row.summary,
+        })),
+        ...ruleRows.map((row) => ({
+          id: `rule-${row.id}`,
+          when: row.createdAt,
+          kind: "rule",
+          actor: auditActorLabel(row.ownerId ? (actorById.get(row.ownerId) ?? row.ownerId) : null),
+          summary: `${row.status} · evidence ${row.evidenceCount} · ${row.statement}`,
+        })),
+      ]);
+    });
   }
 
-  const rows = await withTenant(access.ctx.orgId, async (tx) => {
-    const feedback = await tx.select().from(feedbackEvents).orderBy(desc(feedbackEvents.createdAt));
-    const events = await tx.select().from(auditEvents).orderBy(desc(auditEvents.createdAt));
-    const ruleRows = await tx.select().from(rules).orderBy(desc(rules.createdAt));
-    return [
-      ...feedback.map((row) => ({
-        id: row.id,
-        when: row.createdAt,
-        kind: "feedback",
-        summary: `${row.humanDecision} · ${reasonLabel(row.reasonCode)} · ${row.rationale ?? ""}`,
-      })),
-      ...events.map((row) => ({
-        id: row.id,
-        when: row.createdAt,
-        kind: row.kind,
-        summary: row.summary,
-      })),
-      ...ruleRows.map((row) => ({
-        id: `rule-${row.id}`,
-        when: row.createdAt,
-        kind: "rule",
-        summary: `${row.status} · evidence ${row.evidenceCount} · ${row.statement}`,
-      })),
-    ].sort((left, right) => right.when.getTime() - left.when.getTime());
-  });
-
-  return <AuditList rows={rows} />;
-}
-
-function AuditList({
-  rows,
-}: {
-  rows: { id: string; when: Date; kind: string; summary: string }[];
-}) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
@@ -82,26 +100,7 @@ function AuditList({
           Feedback and rule status changes for this workspace. Other workspaces are not listed.
         </p>
       </div>
-      {rows.length === 0 ? (
-        <Empty className="border">
-          <EmptyHeader>
-            <EmptyTitle>No audit events</EmptyTitle>
-            <EmptyDescription>Reviews and rule changes will show up here.</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {rows.map((row) => (
-            <li key={row.id} className="flex flex-col gap-1 rounded-xl border px-4 py-3 text-sm">
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">{row.kind}</Badge>
-                <span className="text-muted-foreground">{formatWhen(row.when)}</span>
-              </div>
-              <p>{row.summary}</p>
-            </li>
-          ))}
-        </ul>
-      )}
+      <AuditList rows={rows} />
     </div>
   );
 }
