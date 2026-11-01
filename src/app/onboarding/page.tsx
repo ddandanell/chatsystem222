@@ -9,6 +9,7 @@ import {
   joinWorkspaceAction,
 } from "@/app/onboarding/actions";
 import { WorkspaceForms } from "@/app/onboarding/forms";
+import { EnvironmentBadge } from "@/components/environment-badge";
 import { listMyWorkspaces } from "@/lib/workspace-access";
 
 export const metadata = { title: "Workspace" };
@@ -21,6 +22,7 @@ export default async function OnboardingPage() {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-10 md:px-6">
       <div className="flex flex-col gap-2">
+        <EnvironmentBadge className="self-start" />
         <h1 className="text-3xl font-medium tracking-tight">Choose a workspace</h1>
         <p className="max-w-xl text-sm leading-6 text-muted-foreground">
           A workspace is the tenant. Decisions, keys, and feedback stay inside

@@ -127,6 +127,15 @@ test("the sign-in page renders the chip, because that is where the mismatch was 
   assert.match(page, /<EnvironmentBadge className=/);
 });
 
+test("the two pages outside the shell render the chip too", () => {
+  const onboarding = source("src/app/onboarding/page.tsx");
+  assert.match(onboarding, /import \{ EnvironmentBadge \} from "@\/components\/environment-badge"/);
+  assert.match(onboarding, /<EnvironmentBadge className=/);
+  const reset = source("src/app/login/reset/page.tsx");
+  assert.match(reset, /import \{ EnvironmentBadge \} from "@\/components\/environment-badge"/);
+  assert.match(reset, /<EnvironmentBadge className=/);
+});
+
 test("the chip exposes machine-readable attributes for the release check", () => {
   const component = source("src/components/environment-badge.tsx");
   for (const attribute of ["data-environment", "data-deployment-id", "data-commit"]) {
