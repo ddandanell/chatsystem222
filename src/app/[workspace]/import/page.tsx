@@ -52,7 +52,7 @@ export default async function ImportPage({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-medium tracking-tight">Import</h2>
+        <h1 className="text-2xl font-medium tracking-tight">Import</h1>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
           ChatGPT project exports stay as raw files for myCHEF. There is no archive table that can hold the bytes, so they are kept in this app’s local raw store. Approving one archive inserts a new pending knowledge row. The rows already in knowledge are left as they are. Automatic sending is not on.
         </p>

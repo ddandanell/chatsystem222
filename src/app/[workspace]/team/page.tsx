@@ -29,7 +29,7 @@ export default async function TeamPage({
     return (
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-medium tracking-tight">Team</h2>
+          <h1 className="text-2xl font-medium tracking-tight">Team</h1>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
             This Neon role cannot create a membership table. The signed-in session is the owner of myCHEF.
           </p>
@@ -69,7 +69,7 @@ export default async function TeamPage({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-medium tracking-tight">Team</h2>
+        <h1 className="text-2xl font-medium tracking-tight">Team</h1>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
           Membership is read from this workspace only. Invites and role changes
           are not in this slice.

@@ -103,7 +103,9 @@ export default async function DashboardPage({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-medium tracking-tight">{access.ctx.orgName}</h2>
+        {/* The page subject, not the workspace name: the name is the shell label now, and printing
+            it again as the largest heading was UX-0203. Classes unchanged, so nothing moved. */}
+        <h1 className="text-2xl font-medium tracking-tight">Dashboard</h1>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
           What needs you today. Each count opens the list behind it. Nothing on this page sends a reply.
         </p>

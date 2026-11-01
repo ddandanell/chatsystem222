@@ -66,7 +66,7 @@ export default async function CandidatesPage({
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex flex-col gap-1">
-            <h2 className="text-2xl font-medium tracking-tight">Learning queue</h2>
+            <h1 className="text-2xl font-medium tracking-tight">Learning queue</h1>
             <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
               Local rules candidates only. Nothing activates itself, and nothing is sent.
             </p>
@@ -138,7 +138,7 @@ export default async function CandidatesPage({
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-medium tracking-tight">Learning queue</h2>
+          <h1 className="text-2xl font-medium tracking-tight">Learning queue</h1>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
             Inbox corrections land here as situational snippets. Approve embeds the
             case into knowledge. Dismiss retires it. The curated library stays

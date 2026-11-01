@@ -30,7 +30,7 @@ export default async function AccessPage({
   return (
     <div className="flex max-w-xl flex-col gap-5">
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-medium tracking-tight">Who can sign in</h2>
+        <h1 className="text-2xl font-medium tracking-tight">Who can sign in</h1>
         <p className="text-sm leading-6 text-muted-foreground">
           Only approved operators open the ledger. Passwords are stored as a scrypt hash. The page never shows them again.
         </p>
