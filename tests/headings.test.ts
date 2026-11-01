@@ -58,12 +58,9 @@ test("no page subject is left as a 2xl h2 where a subject heading exists", () =>
   for (const page of PAGES) {
     const source = read(page);
     if (page.endsWith("dashboard/page.tsx")) {
-      // The only 2xl heading here is the workspace name, which is deliberately not the page subject.
-      assert.match(
-        source,
-        /<h2 className="text-2xl font-medium tracking-tight">\{access\.ctx\.orgName\}<\/h2>/,
-        "the dashboard's second workspace-name heading stays a label",
-      );
+      // The workspace name must not reappear here as a heading at all: it is the shell label, and
+      // printing it again as the largest heading was the defect UX-0203 named.
+      assert.doesNotMatch(source, /\{access\.ctx\.orgName\}/, "the dashboard must not repeat the workspace name");
       continue;
     }
     assert.doesNotMatch(
@@ -77,6 +74,7 @@ test("no page subject is left as a 2xl h2 where a subject heading exists", () =>
 test("the promoted headings kept their classes, so nothing moved on screen", () => {
   const promoted = [
     "src/app/[workspace]/audit/page.tsx",
+    "src/app/[workspace]/dashboard/page.tsx",
     "src/app/[workspace]/evals/page.tsx",
     "src/app/[workspace]/import/page.tsx",
     "src/app/[workspace]/team/page.tsx",
@@ -92,7 +90,11 @@ test("the promoted headings kept their classes, so nothing moved on screen", () 
 });
 
 test("the routes without a visible subject heading use a screen-reader h1 until the spec lands", () => {
-  assert.match(read("src/app/[workspace]/dashboard/page.tsx"), /<h1 className="sr-only">Dashboard<\/h1>/);
+  assert.doesNotMatch(
+    read("src/app/[workspace]/dashboard/page.tsx"),
+    /className="sr-only"/,
+    "dashboard's subject is visible now, so it must not also carry a screen-reader duplicate",
+  );
   assert.match(read("src/app/[workspace]/inbox/page.tsx"), /<h1 className="sr-only">Inbox<\/h1>/);
   assert.match(read("src/app/[workspace]/inbox/[id]/page.tsx"), /<h1 className="sr-only">Draft<\/h1>/);
 });
