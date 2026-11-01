@@ -74,39 +74,50 @@ function toOperator(id: string, config: OperatorConfig | null, enabled: boolean)
 
 let bootstrapReady = false;
 
-export async function ensureBootstrapOperator() {
+/** The slice of a pool this module needs, so the bootstrap path can be tested without Postgres. */
+export type OperatorPool = {
+  query: (text: string, values?: unknown[]) => Promise<{ rows: unknown[] }>;
+};
+
+/**
+ * Create the first owner from the environment — and only ever create.
+ *
+ * Regression this closes: when OPERATOR_BOOTSTRAP_PASSWORD held a value whose hash did not match the
+ * stored one, this function used to rewrite `encrypted_secret`, set `enabled = true` and write
+ * `role: owner, approved: true` on whatever row was there. One environment variable was therefore
+ * enough to reset the owner's password, undo a deliberate "Disabled" on the owner row and re-grant
+ * the owner role, from any request that reaches an auth call and needs no session.
+ *
+ * A present operator row is now authoritative, whatever it says. Nothing here reads, verifies or
+ * writes a stored hash: the only password path is the reset flow. Creation keeps the same identity
+ * (`OPERATOR_BOOTSTRAP_EMAIL`, default `bali@mychef.id`) so a fresh checkout still has one owner,
+ * and the insert is `on conflict do nothing` so a concurrent boot cannot overwrite either.
+ */
+export async function ensureBootstrapOperator(options: { pool?: OperatorPool } = {}) {
+  const memoize = options.pool === undefined;
+  const pool: OperatorPool = options.pool ?? (appPool as unknown as OperatorPool);
   if (!usesMychefInbox()) return;
-  if (bootstrapReady) return;
+  if (memoize && bootstrapReady) return;
   const email = (process.env.OPERATOR_BOOTSTRAP_EMAIL || "bali@mychef.id").trim().toLowerCase();
   const password = process.env.OPERATOR_BOOTSTRAP_PASSWORD ?? "";
   if (!email.includes("@") || password.length < 8) return;
   const id = operatorId(email);
-  const existing = await appPool.query<{ encrypted_secret: string }>(
-    `select encrypted_secret from mychef_inbox.integration_connections
+  const existing = await pool.query(
+    `select id from mychef_inbox.integration_connections
      where workspace_id = $1 and id = $2`,
     [WORKSPACE, id],
   );
-  const stored = existing.rows[0]?.encrypted_secret ?? "";
-  // Skip when the stored scrypt hash already matches the bootstrap password.
-  if (stored.startsWith("scrypt$") && stored.split("$").length === 3) {
-    if (await verifyPassword(password, stored)) {
-      bootstrapReady = true;
-      return;
-    }
+  if (existing.rows.length > 0) {
+    if (memoize) bootstrapReady = true;
+    return;
   }
   const hash = await hashPassword(password);
   const name = email === "bali@mychef.id" ? "Bali" : email;
-  await appPool.query(
-    `insert into mychef_inbox.integration_connections as existing_operator
+  await pool.query(
+    `insert into mychef_inbox.integration_connections
        (workspace_id, id, kind, label, encrypted_secret, config, enabled, updated_at)
      values ($1, $2, 'ai', $3, $4, $5::jsonb, true, now())
-     on conflict (workspace_id, id) do update
-       set encrypted_secret = excluded.encrypted_secret,
-           -- Merge, never replace: the row also holds recovery_email and the reset-token fields,
-           -- and a wholesale config write would silently delete them.
-           config = existing_operator.config || excluded.config,
-           enabled = true,
-           updated_at = now()`,
+     on conflict (workspace_id, id) do nothing`,
     [
       WORKSPACE,
       id,
@@ -115,7 +126,7 @@ export async function ensureBootstrapOperator() {
       JSON.stringify({ purpose: "operator", email, name, role: "owner", approved: true }),
     ],
   );
-  bootstrapReady = true;
+  if (memoize) bootstrapReady = true;
 }
 
 export async function verifyOperator(email: string, password: string): Promise<Operator | null> {
