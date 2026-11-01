@@ -34,6 +34,7 @@ import {
 } from "@/lib/learning-queue";
 import { PROVIDER_LABELS, PROVIDERS, type Provider } from "@/lib/providers";
 import { rankKnowledgeFromDatabase } from "@/lib/knowledge-retrieval";
+import { OPEN_TURN_DECISION_PREDICATE, turnState } from "@/lib/turn-state";
 import {
   MYCHEF_RETRIEVAL_SCOPE,
   RETRIEVAL_POLICY_VERSION,
@@ -74,10 +75,7 @@ export async function dashboardCounts() {
        (select count(*) from mychef_inbox.knowledge where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')) as knowledge,
        (select count(*) from mychef_inbox.conversations c
          where c.workspace_id = $1 and c.status = 'needs_reply'
-           and not exists (
-             select 1 from mychef_inbox.decision_records d
-             where d.workspace_id = c.workspace_id and d.conversation_id = c.id
-           )) as needs_reply,
+           and ${OPEN_TURN_DECISION_PREDICATE}) as needs_reply,
        (select count(*) from mychef_inbox.decision_records where workspace_id = $1) as decisions,
        (select count(*) from mychef_inbox.knowledge where workspace_id = $1 and source in ('ledger-rule', 'learning-pass') and status = 'pending') as candidates`,
     [MYCHEF_WORKSPACE],
@@ -214,10 +212,7 @@ export async function listInbox(
      where c.workspace_id = $1
        and c.status = 'needs_reply'
        and ($2::text = '' or ct.name ilike '%' || $2 || '%')
-       and not exists (
-         select 1 from mychef_inbox.decision_records d
-         where d.workspace_id = c.workspace_id and d.conversation_id = c.id
-       )`,
+       and ${OPEN_TURN_DECISION_PREDICATE}`,
     [MYCHEF_WORKSPACE, needle],
   );
   const total = Number(totalRows[0]?.n ?? 0);
@@ -251,10 +246,7 @@ export async function listInbox(
      where c.workspace_id = $1
        and c.status = 'needs_reply'
        and ($2::text = '' or ct.name ilike '%' || $2 || '%')
-       and not exists (
-         select 1 from mychef_inbox.decision_records d
-         where d.workspace_id = c.workspace_id and d.conversation_id = c.id
-       )
+       and ${OPEN_TURN_DECISION_PREDICATE}
      order by c.last_message_at desc nulls last
      limit $3 offset $4`,
     [MYCHEF_WORKSPACE, needle, PAGE_SIZE, offset],
@@ -331,9 +323,16 @@ export async function getConversation(id: string) {
     status: string;
     channel: string | null;
     last_message_at: Date | null;
+    last_inbound_at: Date | null;
+    last_decision_at: Date | null;
   }>(
     `select c.id, c.contact_id, ct.name as contact_name, ct.facts, c.project_id, c.status,
-            c.channel, c.last_message_at
+            c.channel, c.last_message_at,
+            (select max(m.created_at) from mychef_inbox.messages m
+              where m.workspace_id = c.workspace_id and m.conversation_id = c.id
+                and m.direction = 'inbound') as last_inbound_at,
+            (select max(d.created_at) from mychef_inbox.decision_records d
+              where d.workspace_id = c.workspace_id and d.conversation_id = c.id) as last_decision_at
      from mychef_inbox.conversations c
      left join mychef_inbox.contacts ct
        on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
@@ -372,12 +371,25 @@ export async function getConversation(id: string) {
      limit 1`,
     [MYCHEF_WORKSPACE, id],
   );
-  const decisions = await query<{ id: string }>(
-    `select id::text as id from mychef_inbox.decision_records
+  // CS-001: the newest decision, with its time, so the caller can tell whether it covers the
+  // newest inbound message. `limit 1` with no time bound was the defect: any decision ever.
+  const decisions = await query<{
+    id: string;
+    created_at: Date;
+    human_decision: string;
+    reason_code: string;
+  }>(
+    `select id::text as id, created_at, human_decision, reason_code
+     from mychef_inbox.decision_records
      where workspace_id = $1 and conversation_id = $2
+     order by created_at desc
      limit 1`,
     [MYCHEF_WORKSPACE, id],
   );
+  const latestDecision = decisions[0] ?? null;
+  const lastInboundAt = conversation.last_inbound_at ?? null;
+  const lastDecisionAt = conversation.last_decision_at ?? null;
+  const decisionState = turnState({ lastInboundAt, lastDecisionAt });
   const draftRow = drafts[0] ?? null;
   const meta = draftMetaFromRow(draftRow?.source_ids, draftRow?.prompt_version ?? null);
   return {
@@ -396,7 +408,13 @@ export async function getConversation(id: string) {
           escalate: meta.escalate,
         }
       : null,
-    decided: Boolean(decisions[0]),
+    decided: decisionState === "decided",
+    turnState: decisionState,
+    lastInboundAt,
+    lastDecisionAt,
+    /** The newest decision, even when it belongs to an earlier turn. Drives the "previously
+     *  decided" strip; null when the thread was never reviewed. */
+    previousDecision: latestDecision,
   };
 }
 
@@ -477,6 +495,67 @@ export async function getRecordedDecision(id: string) {
      where workspace_id = $1 and record_id = $2 and action like 'outcome:%'
      order by created_at desc limit 1`,
     [MYCHEF_WORKSPACE, id],
+  );
+  return {
+    ...decision,
+    outcome: outcome[0]?.action?.slice("outcome:".length) ?? null,
+  };
+}
+
+/**
+ * CS-001: the newest decision for a *conversation* id, and only when it still covers the newest
+ * inbound message.
+ *
+ * `getRecordedDecision` keys on `d.id = $2::uuid`. The desk passed a conversation nanoid into it,
+ * the cast threw, and `.catch(() => null)` swallowed the throw — so a decided thread opened by URL
+ * showed a normal, composer-disabled thread with no explanation. A re-opened thread returns null on
+ * purpose: the newest guest message has no decision yet, so the desk must render the thread.
+ */
+export async function getLatestDecisionForConversation(conversationId: string) {
+  const decisions = await query<{
+    id: string;
+    conversation_id: string;
+    human_decision: string;
+    reason_code: string;
+    rationale: string;
+    why_not: string;
+    rejected_alternative: string;
+    created_at: Date;
+    original_draft: string;
+    edited_draft: string;
+    inbound: string | null;
+    contact_name: string | null;
+  }>(
+    `select d.id::text as id, d.conversation_id, d.human_decision, d.reason_code,
+            d.rationale, d.why_not, d.rejected_alternative, d.created_at,
+            f.original_draft, f.edited_draft,
+            m.body as inbound,
+            ct.name as contact_name
+     from mychef_inbox.decision_records d
+     join mychef_inbox.feedback f on f.id = d.feedback_id
+     left join mychef_inbox.conversations c
+       on c.workspace_id = d.workspace_id and c.id = d.conversation_id
+     left join mychef_inbox.contacts ct
+       on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
+     left join lateral (
+       select body from mychef_inbox.messages
+       where workspace_id = d.workspace_id and conversation_id = d.conversation_id
+         and direction = 'inbound'
+       order by created_at desc limit 1
+     ) m on true
+     where d.workspace_id = $1 and d.conversation_id = $2
+       and ${OPEN_TURN_DECISION_PREDICATE}
+     order by d.created_at desc
+     limit 1`,
+    [MYCHEF_WORKSPACE, conversationId],
+  );
+  const decision = decisions[0];
+  if (!decision) return null;
+  const outcome = await query<{ action: string }>(
+    `select action from mychef_inbox.audit_log
+     where workspace_id = $1 and record_id = $2 and action like 'outcome:%'
+     order by created_at desc limit 1`,
+    [MYCHEF_WORKSPACE, decision.id],
   );
   return {
     ...decision,
@@ -676,6 +755,13 @@ export async function agentDraftForConversation(
   };
 }
 
+/**
+ * CS-001: refusal only means "a decision already covers the newest message". It no longer means
+ * "this conversation was reviewed at some point" — a guest follow-up re-opens the turn.
+ */
+const ALREADY_DECIDED_FOR_THIS_MESSAGE =
+  "This message was already decided. Nothing newer has arrived.";
+
 function neonDecision(decision: HumanDecision): "approved" | "edited" | "rejected" {
   if (decision === "accepted") return "approved";
   if (decision === "edited") return "edited";
@@ -697,13 +783,41 @@ export async function reviewConversation(
 ) {
   const conversation = await getConversation(conversationId);
   if (!conversation) return { ok: false as const, error: "That conversation is not in this workspace." };
-  if (conversation.decided) return { ok: false as const, error: "This conversation was already reviewed." };
+  if (conversation.decided) return { ok: false as const, error: ALREADY_DECIDED_FOR_THIS_MESSAGE };
   if (!conversation.draft) return { ok: false as const, error: "Draft a reply before recording a decision." };
   const human = neonDecision(input.humanDecision);
   const finalText = input.finalText.trim() || conversation.draft.body;
   const client = await appPool.connect();
   try {
     await client.query("begin");
+    // CS-001 concurrency: the row lock serialises this review against the webhook's upsert on the
+    // same conversation. Whoever gets the lock first decides the turn; the other one sees the
+    // committed state below and refuses instead of writing a second decision for one message.
+    await client.query(
+      `select id from mychef_inbox.conversations
+       where workspace_id = $1 and id = $2
+       for update`,
+      [MYCHEF_WORKSPACE, conversationId],
+    );
+    const turn = await rows<{ last_inbound_at: Date | null; last_decision_at: Date | null }>(
+      client,
+      `select
+         (select max(m.created_at) from mychef_inbox.messages m
+           where m.workspace_id = $1 and m.conversation_id = $2
+             and m.direction = 'inbound') as last_inbound_at,
+         (select max(d.created_at) from mychef_inbox.decision_records d
+           where d.workspace_id = $1 and d.conversation_id = $2) as last_decision_at`,
+      [MYCHEF_WORKSPACE, conversationId],
+    );
+    if (
+      turnState({
+        lastInboundAt: turn[0]?.last_inbound_at ?? null,
+        lastDecisionAt: turn[0]?.last_decision_at ?? null,
+      }) === "decided"
+    ) {
+      await client.query("rollback");
+      return { ok: false as const, error: ALREADY_DECIDED_FOR_THIS_MESSAGE };
+    }
     const feedback = await client.query<{ id: string }>(
       `insert into mychef_inbox.feedback
          (workspace_id, conversation_id, scope, note, original_draft, edited_draft, author_id)
@@ -917,10 +1031,7 @@ export async function listDeskQueue(
      where c.workspace_id = $1
        and c.status = 'needs_reply'
        and ($2::text = '' or ct.name ilike '%' || $2 || '%')
-       and not exists (
-         select 1 from mychef_inbox.decision_records d
-         where d.workspace_id = c.workspace_id and d.conversation_id = c.id
-       )`,
+       and ${OPEN_TURN_DECISION_PREDICATE}`,
     [MYCHEF_WORKSPACE, needle],
   );
   const total = Number(totalRows[0]?.n ?? 0);
@@ -953,10 +1064,7 @@ export async function listDeskQueue(
      where c.workspace_id = $1
        and c.status = 'needs_reply'
        and ($2::text = '' or ct.name ilike '%' || $2 || '%')
-       and not exists (
-         select 1 from mychef_inbox.decision_records d
-         where d.workspace_id = c.workspace_id and d.conversation_id = c.id
-       )
+       and ${OPEN_TURN_DECISION_PREDICATE}
      order by c.last_message_at desc nulls last
      limit $3 offset $4`,
     [MYCHEF_WORKSPACE, needle, PAGE_SIZE, offset],

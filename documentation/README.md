@@ -27,6 +27,7 @@ Project docs for the myCHEF operations console (decision ledger, inbox desk, kno
 | [inbox-ux.md](./inbox-ux.md) | Three-pane inbox brief |
 | [inbox-design-system.md](./inbox-design-system.md) | shadcn desk contract (layout, tokens, spacing) |
 | [contact-response-desk.md](./contact-response-desk.md) | Timers, always-on AI draft, correct→learn |
+| [cs001-turn-model.md](./cs001-turn-model.md) | A guest follow-up re-opens a decided thread (turn model) |
 | [inbox-three-pane-shipped.md](./inbox-three-pane-shipped.md) | What Phase 1 desk already shipped |
 | [cbls-architecture.md](./cbls-architecture.md) | Case-Based Learning |
 | [learning-queue.md](./learning-queue.md) | Learning Queue operator notes |
