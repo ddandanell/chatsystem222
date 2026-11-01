@@ -87,12 +87,14 @@ export async function ensureBootstrapOperator() {
   const hash = await hashPassword(password);
   const name = email === "bali@mychef.id" ? "Bali" : email;
   await appPool.query(
-    `insert into mychef_inbox.integration_connections
+    `insert into mychef_inbox.integration_connections as existing_operator
        (workspace_id, id, kind, label, encrypted_secret, config, enabled, updated_at)
      values ($1, $2, 'ai', $3, $4, $5::jsonb, true, now())
      on conflict (workspace_id, id) do update
        set encrypted_secret = excluded.encrypted_secret,
-           config = excluded.config,
+           -- Merge, never replace: the row also holds recovery_email and the reset-token fields,
+           -- and a wholesale config write would silently delete them.
+           config = existing_operator.config || excluded.config,
            enabled = true,
            updated_at = now()`,
     [
@@ -200,13 +202,15 @@ export async function saveOperator(input: {
   const approved = ownerLock ? true : input.approved;
   const role = ownerLock ? "owner" : input.role;
   await appPool.query(
-    `insert into mychef_inbox.integration_connections
+    `insert into mychef_inbox.integration_connections as existing_operator
        (workspace_id, id, kind, label, encrypted_secret, config, enabled, updated_at)
      values ($1, $2, 'ai', $3, $4, $5::jsonb, $6, now())
      on conflict (workspace_id, id) do update
        set label = excluded.label,
            encrypted_secret = excluded.encrypted_secret,
-           config = excluded.config,
+           -- Merge, never replace. An owner editing a name or a role must not wipe the recovery
+           -- address or an in-flight reset token on that operator; before this, it did.
+           config = existing_operator.config || excluded.config,
            enabled = excluded.enabled,
            updated_at = now()`,
     [
