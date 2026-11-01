@@ -18,7 +18,9 @@ export function AuditList({ rows }: { rows: AuditRowView[] }) {
       <Empty className="border">
         <EmptyHeader>
           <EmptyTitle>No audit events</EmptyTitle>
-          <EmptyDescription>Reviews and rule changes will show up here.</EmptyDescription>
+          <EmptyDescription>
+          Changes recorded in this workspace will show up here, with the actor.
+        </EmptyDescription>
         </EmptyHeader>
       </Empty>
     );

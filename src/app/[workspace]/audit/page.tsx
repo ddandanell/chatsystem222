@@ -17,6 +17,7 @@ import { usesMychefInbox } from "@/db/mode";
 import { auditEvents, feedbackEvents, rules, users } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
 import {
+  AUDIT_DESCRIPTION,
   NOT_RECORDED_ACTOR,
   auditActorLabel,
   sortAuditRows,
@@ -97,7 +98,7 @@ export default async function AuditPage({
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-medium tracking-tight">Audit</h1>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-          Feedback and rule status changes for this workspace. Other workspaces are not listed.
+          {AUDIT_DESCRIPTION}
         </p>
       </div>
       <AuditList rows={rows} />
