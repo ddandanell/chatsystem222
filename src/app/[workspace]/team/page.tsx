@@ -48,6 +48,9 @@ export default async function TeamPage({
     const operators = await listOperators();
     const owner = operators.find((row) => row.role === "owner" && row.approved);
     const manage = canManageKeys(access.ctx.role);
+    // A row whose stored role named nothing is read-only. Saying so once, under the table, is
+    // clearer on a phone than a paragraph inside the Role cell, and it names the row to fix.
+    const unresolved = operators.filter((row) => !row.roleRecognised);
     return (
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-1">
@@ -91,7 +94,14 @@ export default async function TeamPage({
                     </TableCell>
                     <TableCell>{row.email}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{roleLabel(row.role)}</Badge>
+                      <span className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary">{roleLabel(row.role)}</Badge>
+                        {row.roleRecognised ? null : (
+                          <Badge variant="outline" data-role-unrecognised>
+                            Not recognised
+                          </Badge>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>
@@ -102,6 +112,29 @@ export default async function TeamPage({
             )}
           </TableBody>
         </Table>
+        {unresolved.length === 0 ? null : (
+          <div
+            className="rounded-xl border p-4 text-sm leading-6 text-muted-foreground"
+            data-role-unrecognised
+          >
+            <p className="font-medium text-foreground">
+              {unresolved.length === 1
+                ? "One row stores a role this console does not know"
+                : `${unresolved.length} rows store a role this console does not know`}
+            </p>
+            <ul className="mt-2 list-disc pl-5">
+              {unresolved.map((row) => (
+                <li key={row.email}>
+                  {row.email}:{" "}
+                  {row.storedRole
+                    ? `role “${row.storedRole}”`
+                    : "no role stored"}{" "}
+                  — the row is read-only until it names owner, admin, reviewer or viewer.
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     );
   }

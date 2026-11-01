@@ -53,6 +53,13 @@ export default async function AccessPage({
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-medium">{operator.name}</p>
               <Badge variant="outline">{operator.role}</Badge>
+              {operator.roleRecognised ? null : (
+                <span className="text-xs leading-5 text-muted-foreground" data-role-unrecognised>
+                  {operator.storedRole
+                    ? `Stored role “${operator.storedRole}” is not one this console knows — the row is read-only.`
+                    : "No role is stored — the row is read-only."}
+                </span>
+              )}
               <Badge variant={operator.approved ? "secondary" : "outline"}>
                 {operator.approved ? "Approved" : "Revoked"}
               </Badge>
