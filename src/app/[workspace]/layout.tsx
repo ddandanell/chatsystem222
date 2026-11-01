@@ -30,7 +30,7 @@ import { listMyWorkspaces } from "@/lib/workspace-access";
 function HeaderSkeleton() {
   return (
     <header className="shrink-0 border-b">
-      <div className="mx-auto flex w-full max-w-6xl animate-pulse flex-col gap-3 px-4 py-3 md:px-6">
+      <div className="mx-auto flex w-full max-w-6xl animate-pulse flex-col gap-2 px-4 py-1.5 sm:gap-3 sm:py-3 md:px-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col gap-2">
             <div className="h-3 w-24 rounded bg-muted" />
@@ -80,8 +80,8 @@ async function WorkspaceChrome({ workspace }: { workspace: string }) {
 
   return (
     <header className="shrink-0 border-b">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-3 md:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-4 py-1.5 sm:gap-3 sm:py-3 md:px-6">
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex min-w-0 flex-col gap-1">
             <Link
               href={`/${ctx.orgSlug}/inbox`}
@@ -89,10 +89,10 @@ async function WorkspaceChrome({ workspace }: { workspace: string }) {
             >
               Inbox mychef
             </Link>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               {/* The workspace name is a label, not the page heading: it repeated on all 14
                   routes and cost every page its own h1 (MC-022). Same classes, no visual change. */}
-              <p className="truncate text-base font-medium sm:text-lg">{ctx.orgName}</p>
+              <p className="min-w-0 truncate text-base font-medium sm:text-lg">{ctx.orgName}</p>
               <Badge variant="secondary">{roleLabel(ctx.role)}</Badge>
               <EnvironmentBadge />
             </div>

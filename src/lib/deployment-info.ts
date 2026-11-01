@@ -87,6 +87,18 @@ export function deploymentLine(info: DeploymentInfo): string {
     .join(" · ");
 }
 
+/**
+ * The phone line: `PROD · e5319b3`. UX-0224.
+ *
+ * The deployment id is 30+ characters on its own, so the full line cannot sit beside the workspace
+ * name at 390px and the shell header grew to 177px. The commit is the part an operator quotes back
+ * in a release record, and the id is not lost: it stays on the element as `data-deployment-id` and
+ * in the `title`.
+ */
+export function deploymentLineCompact(info: DeploymentInfo): string {
+  return [info.label, info.commitSha ?? "no commit"].join(" · ");
+}
+
 /** Read this process's own environment. Server only: VERCEL_* are not exposed to the browser. */
 export function currentDeploymentInfo(): DeploymentInfo {
   return readDeploymentInfo({
