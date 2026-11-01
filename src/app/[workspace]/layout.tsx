@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { logoutAction } from "@/app/login/actions";
 import { ConsoleNav } from "@/components/console-nav";
+import { EnvironmentBadge } from "@/components/environment-badge";
 import { MobileNav } from "@/components/mobile-nav";
 import { WorkspaceMain } from "@/components/workspace-main";
 import { Badge } from "@/components/ui/badge";
@@ -91,6 +92,7 @@ async function WorkspaceChrome({ workspace }: { workspace: string }) {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate text-base font-medium sm:text-lg">{ctx.orgName}</h1>
               <Badge variant="secondary">{roleLabel(ctx.role)}</Badge>
+              <EnvironmentBadge />
             </div>
           </div>
           <div className="flex items-center gap-3">
