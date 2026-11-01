@@ -23,6 +23,13 @@ import {
   type AgentReply,
 } from "@/lib/agent-provider";
 import { PROVIDER_LABELS, type Provider } from "@/lib/providers";
+import {
+  composeLocalReply,
+  repeatViolations,
+  statesPrice,
+  threadBrief,
+  type ThreadMessage,
+} from "@/lib/thread-memory";
 
 /** Angry, unsafe, legal, refund, VIP or unusual requests are drafted but flagged for a person. */
 export const SENSITIVE_PATTERNS: { id: string; pattern: RegExp }[] = [
@@ -74,6 +81,14 @@ export type AgentDraft = {
   notice: string | null;
   latencyMs: number;
   promptVersion: string;
+  /** How much of the thread this draft was built from (MC-169). Never estimated. */
+  thread: {
+    messagesRead: number;
+    inbound: number;
+    outbound: number;
+    firstAt: string | null;
+    lastAt: string | null;
+  };
 };
 
 export type AgentRunDeps = AgentDeps & { orgId: string };
@@ -84,52 +99,40 @@ function lastInbound(ctx: AgentContext): string {
   return (inbound ?? thread[thread.length - 1])?.body ?? "";
 }
 
-function quoteLine(excerpt: string): string {
-  const first = excerpt
-    .split("\n")
-    .map((line) => line.replace(/^#+\s*/, "").trim())
-    .filter((line) => line && line.length > 20)[0];
-  return (first ?? excerpt).split(/(?<=\.)\s/)[0]?.trim().slice(0, 260) ?? "";
-}
-
-export function joinList(items: string[]): string {
-  if (items.length === 0) return "";
-  if (items.length === 1) return items[0] ?? "";
-  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
-}
-
 /**
- * Deterministic reply used when no provider answers. It never states a price, a menu or a date it
- * cannot support: with approved knowledge it quotes one line and asks for the detail needed to
- * confirm; without knowledge it acknowledges and asks for the details a person needs.
+ * Deterministic reply used when no provider answers.
+ *
+ * MC-169/170: it is grounded on the whole thread, not on the last inbound message, so a guest who
+ * already gave the date and the party size is not asked for them again, and it does not greet a
+ * thread myCHEF has already written in. With no approved source it says in plain words that it
+ * cannot confirm a price instead of leaving the operator a placeholder to rewrite.
  */
 export function localAgentReply(
   knowledge: ReturnType<typeof selectAgentKnowledge>,
   inbound: string,
-): { text: string; why: string; whyNot: string } {
-  const position = knowledge.find((block) => block.kind === "position") ?? knowledge[0];
-  const asksDate = /\b(date|when|day|month|night)\b/i.test(inbound);
-  const asksGuests = /\b(guest|people|pax|persons|adults|children|how many)\b/i.test(inbound);
-  const parts: string[] = [];
-  if (!asksDate) parts.push("the date you have in mind");
-  if (!asksGuests) parts.push("the number of guests");
-  parts.push("the villa or area you are staying in");
-  const ask = `Could you confirm ${joinList(parts)}?`;
-  if (position) {
-    const quote = quoteLine(position.excerpt);
-    return {
-      text: `Thank you for reaching out. ${quote ? `${quote} ` : ""}${ask} That way we can put the right menu together for you.`,
-      why: `No provider answered, so this is the local draft. It quotes the approved source "${position.title}" and asks for the detail needed to confirm.`,
-      whyNot:
-        "It does not quote a price, a menu or availability: those are not in an approved source for this message.",
-    };
-  }
-  return {
-    text: `Thank you for your message. To give you an exact answer I need ${joinList(parts)}. Once I have those, I will come back with the menu and the price.`,
-    why: "No provider answered and no approved source matches this project yet, so this is the local draft. It asks for the details a person needs and states no facts.",
-    whyNot:
-      "It states no price, menu, date or availability, because none of those is approved for this project.",
-  };
+  thread?: ThreadMessage[],
+): { text: string; why: string; whyNot: string; asked: string[] } {
+  const messages =
+    thread && thread.length > 0
+      ? thread
+      : [{ direction: "inbound", body: inbound, id: "inbound" } satisfies ThreadMessage];
+  return composeLocalReply(knowledge, messages);
+}
+
+/**
+ * The desk guard over a provider answer (MC-170). A model can greet a thread that has already been
+ * greeted, re-ask a question the guest answered two messages ago, reuse the sentence we sent
+ * yesterday, or put a price on the screen with no approved source behind it. The draft is refused
+ * and the local reply is written instead, with the reason named for the reviewer.
+ */
+export function providerReplyProblems(
+  reply: string,
+  thread: ThreadMessage[],
+  knowledgeCount: number,
+): string[] {
+  const problems: string[] = repeatViolations(reply, thread).map((violation) => violation.code);
+  if (knowledgeCount === 0 && statesPrice(reply)) problems.push("unbacked_price");
+  return [...new Set(problems)];
 }
 
 function sourcesFrom(knowledge: ReturnType<typeof selectAgentKnowledge>): SourceRef[] {
@@ -152,12 +155,26 @@ export async function runConversationAgent(
   const inbound = lastInbound(ctx);
   const flags = sensitiveReasons(inbound);
   const escalateForSafety = flags.length > 0;
+  const thread = selectAgentThread(ctx);
+  const brief = threadBrief(thread);
+  const threadReport = {
+    messagesRead: brief.messagesRead,
+    inbound: brief.inbound,
+    outbound: brief.outbound,
+    firstAt: brief.firstAt,
+    lastAt: brief.lastAt,
+  };
   const prompt = buildAgentPrompt(ctx);
   const completion = await completeWithProvider(ctx.workspaceId, prompt, deps);
 
+  // Hoisted: the refusal notice below has to name what the guard caught, and that decision is made
+  // inside this branch.
+  let parsed: AgentReply | null = null;
+  let problems: string[] = [];
   if (completion.ok) {
-    const parsed: AgentReply | null = parseAgentOutput(completion.text);
-    if (parsed) {
+    parsed = parseAgentOutput(completion.text);
+    problems = parsed ? providerReplyProblems(parsed.reply, thread, knowledge.length) : [];
+    if (parsed && problems.length === 0) {
       const escalate = escalateForSafety || parsed.escalate;
       return {
         draftText: parsed.reply,
@@ -178,13 +195,19 @@ export async function runConversationAgent(
           : null,
         latencyMs: completion.latencyMs,
         promptVersion: AGENT_PROMPT_VERSION,
+        thread: threadReport,
       };
     }
   }
 
-  const local = localAgentReply(knowledge, inbound);
+  const local = localAgentReply(knowledge, inbound, thread);
   const reason = completion.ok
-    ? "The provider answer was not usable JSON, so the local draft was written instead."
+    ? parsed
+      ? PROVIDER_LABELS[completion.provider] +
+        " answered, but the desk guard refused it (" +
+        problems.join(", ") +
+        "), so the local draft was written instead."
+      : "The provider answer was not usable JSON, so the local draft was written instead."
     : completion.error;
   return {
     draftText: local.text,
@@ -199,5 +222,6 @@ export async function runConversationAgent(
     notice: `${reason} This is the local fallback draft: edit it before approving. Nothing is sent.`,
     latencyMs: 0,
     promptVersion: AGENT_PROMPT_VERSION,
+    thread: threadReport,
   };
 }

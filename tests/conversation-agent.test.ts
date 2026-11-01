@@ -33,6 +33,7 @@ import {
   sensitiveReasons,
 } from "@/lib/conversation-agent";
 import { MYCHEF_RETRIEVAL_SCOPE, rankKnowledgeRows, type KnowledgeCandidate } from "@/lib/retrieval-policy";
+import { repeatViolations, statesPrice } from "@/lib/thread-memory";
 
 const SECRET = "sk-live-should-never-appear-9f2c";
 
@@ -179,7 +180,10 @@ test("the thread is windowed and each body is capped", () => {
   }));
   const thread = selectAgentThread(context({ messages: many }));
   assert.equal(thread.length, AGENT_MESSAGE_LIMIT);
-  assert.equal(thread[0]?.id, "m10");
+  // Changed on purpose for MC-169: the window is no longer `slice(-20)`. The opening message is kept
+  // so the model can see how the conversation started, and the rest is the most recent 19.
+  assert.equal(thread[0]?.id, "m0");
+  assert.equal(thread[1]?.id, "m11");
   assert.equal(thread[0]?.body.length, AGENT_BODY_LIMIT);
 });
 
@@ -469,9 +473,19 @@ test("the local reply never states a price, a menu or availability it cannot sup
 });
 
 test("the local reply asks only for what the guest has not already given", () => {
-  const reply = localAgentReply([], "We are 8 guests on 20 November in Villa Bidadari.");
-  assert.match(reply.text, /the date|the number of guests/);
-  assert.match(reply.text, /villa or area/);
+  // Changed on purpose for MC-170. This exact message is the seeded case: a guest who has just given
+  // the date, the party size and the villa must not be asked for any of them again. The old
+  // expectation asserted the duplicate question was present.
+  const inbound = "We are 8 guests on 20 November in Villa Bidadari.";
+  const reply = localAgentReply([], inbound);
+  const questions = reply.text.split(/(?<=[.?])\s+/).filter((sentence) => sentence.endsWith("?"));
+  for (const question of questions) {
+    assert.doesNotMatch(question, /date|guests|villa|area/i, `re-asked: ${question}`);
+  }
+  assert.deepEqual(repeatViolations(reply.text, [{ direction: "inbound", body: inbound }]), []);
+  // Nothing in this workspace is approved, so it says so instead of naming a price.
+  assert.match(reply.text, /cannot confirm a price/i);
+  assert.equal(statesPrice(reply.text), false);
 });
 
 test("the scope used for the second gate is the myCHEF project", () => {
