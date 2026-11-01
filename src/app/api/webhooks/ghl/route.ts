@@ -7,7 +7,8 @@ import { applyGhlPayload, authorizeGhl } from "@/lib/ghl-inbound";
 export async function POST(request: Request) {
   const auth = authorizeGhl(request.headers);
   if (!auth.ok) {
-    return Response.json({ ok: false, error: "Webhook secret was rejected." }, { status: 401 });
+    // 503 means the endpoint is not configured; 401 means a presented secret was refused.
+    return Response.json({ ok: false, sent: false, error: auth.reason }, { status: auth.status });
   }
   let payload: unknown;
   try {
