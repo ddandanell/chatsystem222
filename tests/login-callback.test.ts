@@ -88,3 +88,34 @@ test("a missing or non-string value is not a target", () => {
   assert.equal(safeCallbackTarget(42), null);
   assert.equal(safeCallbackTarget(["/mychef/inbox"]), null);
 });
+
+test("the login page is not a post-sign-in target", () => {
+  // /login?callbackUrl=/login is same-origin, but after a successful sign-in the bounce in
+  // BounceIfSignedIn sends the browser back to /login: a loop that ends in
+  // ERR_TOO_MANY_REDIRECTS instead of the console.
+  assert.equal(safeCallbackTarget("/login"), null);
+  assert.equal(safeCallbackTarget("/login?callbackUrl=/mychef/inbox"), null);
+  assert.equal(safeCallbackTarget("/login?error=1"), null);
+  assert.equal(safeCallbackTarget("/LOGIN"), null);
+  assert.equal(safeCallbackTarget("/login/help"), null);
+  assert.equal(safeCallbackTarget("/login#top"), null);
+  // A path that merely starts with the same letters is a different page.
+  assert.equal(safeCallbackTarget("/loginx"), "/loginx");
+  assert.equal(safeCallbackTarget("/login-help"), "/login-help");
+});
+
+test("the proxy refuses to record the login page as a callback", () => {
+  assert.equal(loginCallback("/login", "?callbackUrl=/login"), null);
+  assert.equal(loginCallback("/login", ""), null);
+  assert.equal(loginCallback("/login", "?error=1"), null);
+});
+
+test("a nested callback cannot smuggle the loop past the guard", () => {
+  const target = loginCallback("/login", "?callbackUrl=" + encodeURIComponent("/login"));
+  assert.equal(target, null);
+  const twoDeep = loginCallback(
+    "/login",
+    "?callbackUrl=" + encodeURIComponent("/login?callbackUrl=/mychef/inbox"),
+  );
+  assert.equal(twoDeep, null);
+});
