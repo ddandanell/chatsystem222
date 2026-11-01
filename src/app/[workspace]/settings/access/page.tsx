@@ -91,6 +91,7 @@ export default async function AccessPage({
               <FieldLabel htmlFor="operator-role">Role</FieldLabel>
               <select id="operator-role" name="role" className="h-8 rounded-lg border bg-background px-2 text-sm" defaultValue="reviewer">
                 <option value="reviewer">Reviewer</option>
+                <option value="viewer">Viewer (read only)</option>
                 <option value="admin">Admin</option>
                 <option value="owner">Owner</option>
               </select>

@@ -6,12 +6,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { saveOperator, type OperatorRole } from "@/lib/operators";
+import { operatorRole } from "@/lib/roles";
 import { getWorkspaceAccess } from "@/lib/context";
 import { canManageKeys } from "@/lib/workspace-access";
 
 function roleOf(value: string): OperatorRole {
-  if (value === "owner" || value === "admin" || value === "reviewer") return value;
-  return "reviewer";
+  // Type, viewer and an unrecognised value all resolve here, one way, for every caller.
+  return operatorRole(value);
 }
 
 export async function saveOperatorAction(slug: string, formData: FormData) {
