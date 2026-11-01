@@ -21,6 +21,11 @@ import {
 } from "@/lib/contact-tags";
 import { localStructuredDraft } from "@/lib/draft";
 import { runConversationAgent } from "@/lib/conversation-agent";
+import {
+  CONFIRMATION_REFUSAL,
+  confirmationMatches,
+  decisionTarget,
+} from "@/lib/decision-confirmation";
 import { groupForRow, type KnowledgeGroup, type KnowledgeGroupFilter } from "@/lib/knowledge-groups";
 import {
   buildProposalContent,
@@ -693,11 +698,22 @@ export async function reviewConversation(
     finalText: string;
     remember?: boolean;
     tags?: string[];
+    /** B3: the person the operator confirmed they are deciding. Checked before anything is written. */
+    confirmName?: string;
   },
 ) {
   const conversation = await getConversation(conversationId);
   if (!conversation) return { ok: false as const, error: "That conversation is not in this workspace." };
   if (conversation.decided) return { ok: false as const, error: "This conversation was already reviewed." };
+  // B3: a decision is append-only — no undo, no delete. Naming the object is the only guard against
+  // recording a verdict for the wrong person from a stale tab or a shared screen.
+  const target = decisionTarget({
+    contactName: conversation.contact_name,
+    conversationId: conversation.id,
+  });
+  if (!confirmationMatches(input.confirmName, target)) {
+    return { ok: false as const, error: CONFIRMATION_REFUSAL };
+  }
   if (!conversation.draft) return { ok: false as const, error: "Draft a reply before recording a decision." };
   const human = neonDecision(input.humanDecision);
   const finalText = input.finalText.trim() || conversation.draft.body;
