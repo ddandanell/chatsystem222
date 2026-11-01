@@ -91,7 +91,7 @@ export function RecoverySheet() {
           <Button
             type="button"
             variant="link"
-            className="h-auto px-0 text-xs font-medium text-muted-foreground hover:text-foreground"
+            className="h-auto min-h-11 px-1 text-xs font-medium text-muted-foreground hover:text-foreground"
           />
         }
       >
