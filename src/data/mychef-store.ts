@@ -20,9 +20,20 @@ import {
   type ContactFacts,
 } from "@/lib/contact-tags";
 import { localStructuredDraft } from "@/lib/draft";
-import { tokenize } from "@/lib/embed";
 import { groupForTitle, type KnowledgeGroup } from "@/lib/knowledge-groups";
 import { PROVIDER_LABELS, PROVIDERS, type Provider } from "@/lib/providers";
+import {
+  KNOWLEDGE_COUNTS_SQL,
+  KNOWLEDGE_RETRIEVAL_SQL,
+  MYCHEF_RETRIEVAL_SCOPE,
+  RETRIEVAL_POLICY_VERSION,
+  kindForTitle,
+  rankKnowledgeRows,
+  retrievalNotice,
+  summarizeExcludedGroups,
+  type KnowledgeCandidate,
+  type KnowledgeCountGroup,
+} from "@/lib/retrieval-policy";
 import type { HumanDecision, Outcome } from "@/lib/reason-codes";
 import type { SourceRef } from "@/db/schema";
 
@@ -40,23 +51,6 @@ async function query<T>(text: string, params: unknown[] = []): Promise<QueryResu
 async function rows<T>(db: Db, text: string, params: unknown[] = []): Promise<T[]> {
   const result = await db.query(text, params);
   return result.rows as T[];
-}
-
-function kindForTitle(title: string): "position" | "playbook" {
-  return /TEMPLATE|TONE|QUICK_START|SYSTEM_PROMPT|README/i.test(title) ? "playbook" : "position";
-}
-
-function lexical(queryText: string, title: string, body: string): number {
-  const tokens = new Set(tokenize(queryText));
-  if (tokens.size === 0) return 0;
-  let hits = 0;
-  const seen = new Set<string>();
-  for (const token of tokenize(`${title}\n${body}`)) {
-    if (seen.has(token) || !tokens.has(token)) continue;
-    seen.add(token);
-    hits += token.length > 4 && title.toLowerCase().includes(token) ? 3 : 1;
-  }
-  return hits / tokens.size;
 }
 
 export async function dashboardCounts() {
@@ -474,41 +468,22 @@ export async function getRecordedDecision(id: string) {
   };
 }
 
-async function rankKnowledge(inbound: string, tagHint = "") {
-  const docs = await query<{
-    id: string;
-    title: string;
-    content: string;
-    source: string | null;
-    category: string | null;
-    project_id: string | null;
-  }>(
-    `select id, title, content, source, category, project_id
-     from mychef_inbox.knowledge
-     where workspace_id = $1
-       and status is distinct from 'retired'
-       and source not in ('ledger-rule', 'learning-pass')
-       and (source is distinct from 'situational' or status = 'approved')`,
-    [MYCHEF_WORKSPACE],
-  );
-  const hint = tagHint.toLowerCase();
-  return docs
-    .map((doc) => {
-      let score = lexical(inbound, doc.title, doc.content);
-      if (hint) {
-        const hay = `${doc.title} ${doc.category ?? ""} ${doc.project_id ?? ""} ${doc.content.slice(0, 400)}`.toLowerCase();
-        if (hint.split(/\s+/).some((token) => token.length > 2 && hay.includes(token))) {
-          score += 0.35;
-        }
-      }
-      if (doc.source === "situational") score += 0.15;
-      return {
-        doc,
-        score,
-        kind: kindForTitle(doc.title),
-      };
-    })
-    .sort((left, right) => right.score - left.score);
+/**
+ * Authoritative knowledge only: approved, in this project (or approved global), never a candidate
+ * source. The SQL gate is the first line; rankKnowledgeRows() re-checks every row so a future
+ * query change cannot silently widen the set. Exclusion counts come from a grouped metadata
+ * query, so a reviewer is told what was withheld without loading pending content.
+ */
+export async function rankKnowledge(inbound: string, tagHint = "") {
+  const [docs, groups] = await Promise.all([
+    query<KnowledgeCandidate>(KNOWLEDGE_RETRIEVAL_SQL, [MYCHEF_WORKSPACE]),
+    query<KnowledgeCountGroup>(KNOWLEDGE_COUNTS_SQL, [MYCHEF_WORKSPACE]),
+  ]);
+  const ranked = rankKnowledgeRows(docs, inbound, tagHint, MYCHEF_RETRIEVAL_SCOPE);
+  return {
+    ...ranked,
+    excluded: summarizeExcludedGroups(groups, MYCHEF_RETRIEVAL_SCOPE),
+  };
 }
 
 type DraftHint = string | null | { tagHint?: string };
@@ -534,7 +509,7 @@ export async function draftForConversation(
         ? hint.tagHint
         : conversation.tags.join(" ");
   const ranked = await rankKnowledge(inbound, tagHint);
-  const knowledge = ranked.slice(0, 4).map((item) => ({
+  const knowledge = ranked.eligible.slice(0, 4).map((item) => ({
       chunkId: item.doc.id,
       orgId: MYCHEF_WORKSPACE,
       sourceId: item.doc.id,
@@ -544,15 +519,24 @@ export async function draftForConversation(
       score: item.score,
     }));
   const draft = localStructuredDraft(inbound, knowledge, []);
+  const notice = retrievalNotice(ranked);
+  const why = notice ?? draft.why;
   const messageId = [...conversation.messages]
     .reverse()
     .find((message) => message.direction === "inbound")?.id;
   const sourcePayload = {
     sources: draft.sourceRefs,
     confidence: draft.confidence,
-    why: draft.why,
+    why,
     whyNot: draft.whyNot,
     escalate: draft.escalate,
+    retrieval: {
+      policyVersion: RETRIEVAL_POLICY_VERSION,
+      workspaceId: MYCHEF_RETRIEVAL_SCOPE.workspaceId,
+      projectId: MYCHEF_RETRIEVAL_SCOPE.projectId,
+      eligible: ranked.eligible.length,
+      excluded: ranked.excluded,
+    },
   };
   await query(
     `insert into mychef_inbox.drafts
@@ -1342,7 +1326,7 @@ export async function runMychefEvals(actorId: string) {
   const results: { name: string; passed: boolean; notes: string }[] = [];
   for (const item of EVALS) {
     const ranked = await rankKnowledge(item.inbound);
-    const knowledge = ranked.slice(0, 4).map((row) => ({
+    const knowledge = ranked.eligible.slice(0, 4).map((row) => ({
       chunkId: row.doc.id,
       orgId: MYCHEF_WORKSPACE,
       sourceId: row.doc.id,

@@ -14,7 +14,9 @@
     "db:migrate": "node --env-file=.env.local --import tsx src/db/migrate.ts",
     "db:seed": "node --env-file=.env.local --import tsx src/db/seed.ts",
     "db:setup": "node --env-file=.env.local --import tsx src/db/migrate.ts && node --env-file=.env.local --import tsx src/db/seed.ts",
-    "verify:rls": "node --env-file=.env.local --import tsx scripts/verify-rls.ts"
+    "verify:rls": "node --env-file=.env.local --import tsx scripts/verify-rls.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "verify:retrieval": "node --env-file=.env.local --import tsx scripts/verify-retrieval-policy.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
