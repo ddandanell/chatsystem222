@@ -83,8 +83,9 @@ test("the live-marker attributes survive the split", () => {
 
 test("the shell's rhythm is tighter below sm, and unchanged from sm up", () => {
   const layout = read("src/app/[workspace]/layout.tsx");
+  // The top bar is full-bleed beside the sidebar. The phone rhythm (gap and padding) is unchanged.
   const header = layout.match(
-    /<div className="mx-auto flex w-full max-w-6xl flex-col ([^"]+)">/,
+    /<div className="flex w-full flex-col ([^"]+)">/,
   );
   assert.ok(header, "the shell header container was not found");
   const classes = header[1];
@@ -101,7 +102,7 @@ test("the shell's rhythm is tighter below sm, and unchanged from sm up", () => {
 test("the loading skeleton matches the header it replaces, so nothing jumps", () => {
   const layout = read("src/app/[workspace]/layout.tsx");
   const skeleton = layout.match(
-    /<div className="mx-auto flex w-full max-w-6xl animate-pulse flex-col ([^"]+)">/,
+    /<div className="flex w-full animate-pulse flex-col ([^"]+)">/,
   );
   assert.ok(skeleton, "the header skeleton was not found");
   assert.match(skeleton[1], /\bgap-2\b/);

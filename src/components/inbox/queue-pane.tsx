@@ -75,9 +75,16 @@ export function QueuePane({
     <aside className="flex min-h-0 flex-1 flex-col bg-muted/50">
       <div className="flex flex-col gap-4 border-b border-border p-4">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-medium tracking-tight">Queue</h2>
+          <h2 className="text-sm font-medium tracking-tight">
+            {filter === "decided" ? "History" : "Queue"}
+          </h2>
           <Badge variant="secondary">{total}</Badge>
         </div>
+        {filter === "decided" ? (
+          <p className="text-xs text-muted-foreground">
+            Previous conversations. Open one to read the whole thread.
+          </p>
+        ) : null}
         <form className="flex gap-2" action={`/${slug}/inbox`}>
           {filter !== DEFAULT_FILTER ? <input type="hidden" name="filter" value={filter} /> : null}
           <div className="relative min-w-0 flex-1">
@@ -94,7 +101,7 @@ export function QueuePane({
             Search
           </Button>
         </form>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2 overflow-x-auto">
           {DESK_FILTERS.map((item) => {
             const count = counts[item.id] ?? 0;
             return (
@@ -107,7 +114,7 @@ export function QueuePane({
                 aria-current={filter === item.id ? "true" : undefined}
                 title={`${item.hint} — ${count}`}
                 className={cn(
-                  "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+                  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
                   filter === item.id
                     ? "bg-foreground text-background"
                     : "border border-border bg-background text-muted-foreground hover:text-foreground",
