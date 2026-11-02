@@ -40,9 +40,11 @@ const PAGES = [
 test("the workspace name is not an h1", () => {
   const layout = read("src/app/[workspace]/layout.tsx");
   assert.doesNotMatch(layout, /<h1[\s>]/, "the shell must not own the page heading");
+  // UX-0224 added `min-w-0` to this label so it can be the only item that shrinks in a header row
+  // that no longer wraps; the heading-bearing classes are the part this test is about.
   assert.match(
     layout,
-    /<p className="truncate text-base font-medium sm:text-lg">\{ctx\.orgName\}<\/p>/,
+    /<p className="[^"]*\btruncate text-base font-medium sm:text-lg\b[^"]*">\{ctx\.orgName\}<\/p>/,
     "the workspace name keeps its classes but is a label",
   );
 });
