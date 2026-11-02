@@ -9,6 +9,7 @@
  */
 import type { RankedKnowledge, RetrievalScope } from "@/lib/retrieval-policy";
 import { CANDIDATE_SOURCES, MYCHEF_RETRIEVAL_SCOPE } from "@/lib/retrieval-policy";
+import { latestGuestLanguage, replyLanguageLine } from "@/lib/guest-language";
 import { FACT_LABEL, selectThreadWindow, threadBrief } from "@/lib/thread-memory";
 
 /**
@@ -152,6 +153,7 @@ export function buildAgentPrompt(ctx: AgentContext): { system: string; user: str
   if (ctx.contactFacts && Object.keys(ctx.contactFacts).length) {
     lines.push(`client facts: ${JSON.stringify(ctx.contactFacts)}`);
   }
+  lines.push(replyLanguageLine(latestGuestLanguage(thread)));
   const brief = threadBrief(thread);
   lines.push("");
   lines.push(`THREAD (this conversation only, ${thread.length} messages, oldest first)`);

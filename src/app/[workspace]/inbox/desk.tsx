@@ -10,28 +10,9 @@ import { InboxIcon } from "lucide-react";
 import { DeskReview } from "@/components/inbox/desk-review";
 import { DeskShell } from "@/components/inbox/desk-shell";
 import { QueuePane } from "@/components/inbox/queue-pane";
+import { ThreadHistory } from "@/components/inbox/thread-history";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { buttonVariants } from "@/components/ui/button";
 import {
   deskFilterCounts,
   getConversation,
@@ -41,11 +22,9 @@ import {
   listStoredKnowledge,
 } from "@/data/mychef-store";
 import { parseDeskFilter } from "@/lib/desk-filters";
-import { outcomeAction } from "@/app/[workspace]/inbox/mychef-actions";
 import { computeContactResponseMetrics } from "@/lib/contact-response";
 import { draftAgeLabel, draftFreshness } from "@/lib/thread-memory";
 import { getWorkspaceAccess } from "@/lib/context";
-import { OUTCOMES, decisionLabel, reasonLabel } from "@/lib/reason-codes";
 import { canReview } from "@/lib/workspace-access";
 import { cn } from "cn";
 
@@ -76,10 +55,11 @@ export async function MychefDesk({
   // The route's subject heading is the conversation this page is about (MC-022 follow-up): the
   // page owns one h1 and it must not repeat the word "Draft" already used by an h2 below.
   let subjectHeading: string | null = null;
-  const [inbox, counts, recorded] = await Promise.all([
+  const [inbox, counts, recorded, conversation] = await Promise.all([
     listDeskQueue(filter, page, search),
     deskFilterCounts(search),
     selectedId ? recordedFor(selectedId) : Promise.resolve(null),
+    selectedId ? getConversation(selectedId) : Promise.resolve(null),
   ]);
   const ids = inbox.rows.filter((row) => row.kind === "conversation").map((row) => row.id);
   const activeId = selectedId ?? null;
@@ -103,86 +83,38 @@ export async function MychefDesk({
 
   if (activeId) {
     if (recorded) {
-      subjectHeading = recorded.contact_name ?? null;
-      const action = outcomeAction.bind(null, recorded.id);
-      workspace = (
-        <article className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6">
-          <Alert>
-            <AlertTitle>Already recorded</AlertTitle>
+      // A recorded turn stays readable: the whole loaded thread, with the verdict under it.
+      subjectHeading = conversation?.contact_name ?? recorded.contact_name ?? null;
+      workspace = conversation ? (
+        <ThreadHistory
+          slug={slug}
+          contactName={conversation.contact_name}
+          messages={conversation.messages}
+          messageCount={conversation.messageCount}
+          recorded={{
+            id: recorded.id,
+            human_decision: recorded.human_decision,
+            reason_code: recorded.reason_code,
+            rationale: recorded.rationale,
+            edited_draft: recorded.edited_draft,
+            contact_name: recorded.contact_name,
+          }}
+        />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+          <Alert className="max-w-md text-left">
+            <AlertTitle>Thread unavailable</AlertTitle>
             <AlertDescription>
-              This decision is in the ledger. Sending stays disconnected.
+              This decision is in the ledger, but the conversation could not be loaded. Sending stays off.
             </AlertDescription>
           </Alert>
-          <div className="flex flex-wrap gap-2">
-            <Badge>
-              {decisionLabel(
-                recorded.human_decision === "approved" ? "accepted" : recorded.human_decision,
-              )}
-            </Badge>
-            <Badge variant="outline">{reasonLabel(recorded.reason_code)}</Badge>
-            {recorded.contact_name ? <Badge variant="secondary">{recorded.contact_name}</Badge> : null}
-          </div>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Inbound</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm whitespace-pre-wrap">
-                {recorded.inbound ?? "No inbound text stored."}
-              </p>
-            </CardContent>
-          </Card>
-          <dl className="flex flex-col gap-4 text-sm">
-            <div className="flex flex-col gap-1">
-              <dt className="text-xs text-muted-foreground">Draft</dt>
-              <dd className="whitespace-pre-wrap">{recorded.original_draft}</dd>
-            </div>
-            <div className="flex flex-col gap-1">
-              <dt className="text-xs text-muted-foreground">Final</dt>
-              <dd className="whitespace-pre-wrap">{recorded.edited_draft}</dd>
-            </div>
-            <div className="flex flex-col gap-1">
-              <dt className="text-xs text-muted-foreground">Why</dt>
-              <dd className="whitespace-pre-wrap">{recorded.rationale}</dd>
-            </div>
-          </dl>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Outcome</CardTitle>
-              <CardDescription>Optional follow-up note on what happened after review.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form action={action} className="flex max-w-md flex-col gap-4">
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="outcome">Outcome</FieldLabel>
-                    <Select name="outcome" required defaultValue={OUTCOMES[0]}>
-                      <SelectTrigger id="outcome" className="bg-background">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {OUTCOMES.map((outcome) => (
-                          <SelectItem key={outcome} value={outcome}>
-                            {outcome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </FieldGroup>
-                <Button type="submit" variant="outline" className="w-fit">
-                  Save outcome
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
           <Link
-            href={`/${slug}/inbox`}
-            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "w-fit")}
+            href={`/${slug}/inbox?filter=decided`}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-fit")}
           >
-            Back to queue
+            Back to history
           </Link>
-        </article>
+        </div>
       );
     } else {
       const access = await getWorkspaceAccess(slug);
@@ -190,7 +122,6 @@ export async function MychefDesk({
       // and the desk refreshes behind it, so opening a client never waits on a generator. Whether a
       // write is needed at all is decided from timestamps by draftFreshness().
       const now = new Date();
-      const conversation = await getConversation(activeId);
       const canDraft =
         conversation != null &&
         !conversation.decided &&
