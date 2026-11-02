@@ -33,7 +33,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  ensureDraftForConversation,
   getConversation,
   getRecordedDecision,
   listDeskQueue,
@@ -42,6 +41,7 @@ import {
 } from "@/data/mychef-store";
 import { outcomeAction } from "@/app/[workspace]/inbox/mychef-actions";
 import { computeContactResponseMetrics } from "@/lib/contact-response";
+import { draftAgeLabel, draftFreshness } from "@/lib/thread-memory";
 import { getWorkspaceAccess } from "@/lib/context";
 import { OUTCOMES, decisionLabel, reasonLabel } from "@/lib/reason-codes";
 import { canReview } from "@/lib/workspace-access";
@@ -180,25 +180,23 @@ export async function MychefDesk({
       );
     } else {
       const access = await getWorkspaceAccess(slug);
-      let conversation = await getConversation(activeId);
-      let draftError: string | null = null;
-      if (
-        conversation &&
+      // MC-168: nothing is generated in the render path. The stored draft paints on the first byte
+      // and the desk refreshes behind it, so opening a client never waits on a generator. Whether a
+      // write is needed at all is decided from timestamps by draftFreshness().
+      const now = new Date();
+      const conversation = await getConversation(activeId);
+      const canDraft =
+        conversation != null &&
         !conversation.decided &&
         access.status === "ok" &&
-        canReview(access.ctx.role)
-      ) {
-        const ensured = await ensureDraftForConversation(
-          conversation.id,
-          access.ctx.email || access.ctx.userId,
-          conversation,
-        );
-        if (!ensured.ok) draftError = ensured.error;
-        else if (ensured.created && !ensured.draft) {
-          draftError = ensured.error ?? "Could not load the AI draft.";
-        }
-        if (ensured.ok && ensured.conversation) conversation = ensured.conversation;
-      }
+        canReview(access.ctx.role);
+      const freshness = conversation
+        ? draftFreshness(conversation.thread ?? conversation.messages, conversation.draft, now)
+        : { needsDraft: false, reason: "fresh" as const };
+      const draftError: string | null = null;
+      const draftAge = conversation?.draft
+        ? draftAgeLabel(conversation.draft.created_at, now)
+        : null;
       if (conversation) {
         subjectHeading = conversation.contact_name ?? null;
         const knowledge = await listStoredKnowledge();
@@ -217,6 +215,8 @@ export async function MychefDesk({
             knowledgeStatus={statuses}
             metrics={metrics}
             draftError={draftError}
+            needsDraft={canDraft && freshness.needsDraft}
+            draftAge={draftAge}
             conversation={{
               id: conversation.id,
               contact_name: conversation.contact_name,
@@ -240,6 +240,7 @@ export async function MychefDesk({
                     why: conversation.draft.why,
                     whyNot: conversation.draft.whyNot,
                     escalate: conversation.draft.escalate,
+                    thread: conversation.draft.thread ?? null,
                   }
                 : null,
             }}

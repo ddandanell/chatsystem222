@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import {
   draftConversationAction,
+  ensureDraftAction,
   reviewConversationAction,
   updateTagsAction,
 } from "@/app/[workspace]/inbox/mychef-actions";
@@ -66,6 +67,7 @@ import { confirmationMatches, confirmationPrompt, decisionTarget } from "@/lib/d
 import { channelLabel } from "@/lib/channels";
 import { formatConfidence, formatWhen, initials } from "@/lib/format";
 import { REASON_CODES } from "@/lib/reason-codes";
+import { threadReadLabel } from "@/lib/thread-memory";
 import { cn } from "cn";
 
 export type DeskConversation = {
@@ -89,6 +91,13 @@ export type DeskConversation = {
     why: string;
     whyNot: string;
     escalate?: boolean;
+    /** MC-169: how many thread messages this draft was built from. Null when not recorded. */
+    thread?: {
+      messagesRead: number;
+      messagesTotal?: number;
+      inbound: number;
+      outbound: number;
+    } | null;
   } | null;
 };
 
@@ -403,6 +412,8 @@ export function DeskReview({
   knowledgeStatus,
   metrics,
   draftError: initialDraftError = null,
+  needsDraft = false,
+  draftAge = null,
 }: {
   slug: string;
   conversation: DeskConversation;
@@ -411,6 +422,10 @@ export function DeskReview({
   knowledgeStatus: Record<string, string>;
   metrics: ContactResponseMetrics;
   draftError?: string | null;
+  /** MC-168: the stored draft is missing or the thread moved past it. Refreshed behind the page. */
+  needsDraft?: boolean;
+  /** Precomputed on the server so the same instant renders the same text when React hydrates. */
+  draftAge?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -570,6 +585,29 @@ export function DeskReview({
     );
     if (viewport) viewport.scrollTop = viewport.scrollHeight;
   }, [conversation.id, conversation.messages.length]);
+
+  /**
+   * MC-168: the suggestion is already on screen when the thread opens — the stored draft is server
+   * rendered. If the thread has moved past it (or there is none yet) this refreshes behind the page
+   * and re-renders; the thread and the card never wait for it, and a failure is a message under the
+   * card rather than a blank desk. The marker keeps it to one attempt per stored draft.
+   */
+  const autoRefreshed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!needsDraft) return;
+    const marker = `${conversation.id}:${conversation.draft?.body ?? "none"}`;
+    if (autoRefreshed.current === marker) return;
+    autoRefreshed.current = marker;
+    void (async () => {
+      try {
+        const result = await ensureDraftAction(conversation.id);
+        if (result?.ok) router.refresh();
+        else setDraftError(result?.error ?? "Could not generate a draft.");
+      } catch {
+        setDraftError("Could not generate a draft. Try Regenerate.");
+      }
+    })();
+  }, [needsDraft, conversation.id, conversation.draft?.body, router]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -753,6 +791,25 @@ export function DeskReview({
                       AI suggested reply
                     </CardTitle>
                     <div className="flex flex-wrap items-center gap-2">
+                      {draftAge ? (
+                        <Badge variant="outline" className="font-normal text-muted-foreground">
+                          {draftAge}
+                        </Badge>
+                      ) : null}
+                      {conversation.draft.thread ? (
+                        <Badge
+                          variant="outline"
+                          className="font-normal text-muted-foreground"
+                          title="Messages from this conversation that were read when this suggestion was written."
+                        >
+                          {threadReadLabel(conversation.draft.thread)}
+                        </Badge>
+                      ) : null}
+                      {needsDraft ? (
+                        <Badge variant="secondary" className="font-normal">
+                          updating…
+                        </Badge>
+                      ) : null}
                       {conversation.draft.confidence != null ? (
                         <Badge variant="secondary">
                           {formatConfidence(conversation.draft.confidence)} confidence
@@ -884,10 +941,14 @@ export function DeskReview({
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
                   <Alert variant={draftError ? "destructive" : "default"}>
-                    <AlertTitle>{draftError ? "Draft failed" : "No draft yet"}</AlertTitle>
+                    <AlertTitle>
+                      {draftError ? "Draft failed" : needsDraft ? "Writing the suggestion" : "No draft yet"}
+                    </AlertTitle>
                     <AlertDescription>
                       {draftError ??
-                        "Generate a suggestion so the reply stays on screen while you review."}
+                        (needsDraft
+                          ? "The suggestion is being written from this thread, start to end. The conversation above stays readable while it arrives."
+                          : "Generate a suggestion so the reply stays on screen while you review.")}
                     </AlertDescription>
                   </Alert>
                   <Button type="button" disabled={pending} onClick={regenerate} className="w-fit">

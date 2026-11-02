@@ -20,6 +20,7 @@ import {
   type ContactFacts,
 } from "@/lib/contact-tags";
 import { localStructuredDraft } from "@/lib/draft";
+import { draftFreshness, threadBrief } from "@/lib/thread-memory";
 import { runConversationAgent } from "@/lib/conversation-agent";
 import {
   CONFIRMATION_REFUSAL,
@@ -273,7 +274,34 @@ export type DraftMeta = {
   why: string;
   whyNot: string;
   escalate: boolean;
+  /** MC-169: how much of the thread this draft read. Null on drafts written before it was recorded. */
+  thread: {
+    messagesRead: number;
+    messagesTotal: number;
+    inbound: number;
+    outbound: number;
+  } | null;
 };
+
+function threadReportFrom(raw: unknown): DraftMeta["thread"] {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as {
+    messagesRead?: unknown;
+    messagesTotal?: unknown;
+    inbound?: unknown;
+    outbound?: unknown;
+  };
+  if (typeof row.messagesRead !== "number" || !Number.isFinite(row.messagesRead)) return null;
+  return {
+    messagesRead: row.messagesRead,
+    messagesTotal:
+      typeof row.messagesTotal === "number" && Number.isFinite(row.messagesTotal)
+        ? row.messagesTotal
+        : row.messagesRead,
+    inbound: typeof row.inbound === "number" ? row.inbound : 0,
+    outbound: typeof row.outbound === "number" ? row.outbound : 0,
+  };
+}
 
 function normalizeDraftMeta(raw: unknown): DraftMeta {
   if (Array.isArray(raw)) {
@@ -283,6 +311,7 @@ function normalizeDraftMeta(raw: unknown): DraftMeta {
       why: "",
       whyNot: "",
       escalate: false,
+      thread: null,
     };
   }
   if (raw && typeof raw === "object") {
@@ -292,6 +321,7 @@ function normalizeDraftMeta(raw: unknown): DraftMeta {
       why?: string;
       whyNot?: string;
       escalate?: boolean;
+      thread?: unknown;
     };
     return {
       sources: Array.isArray(row.sources) ? row.sources : [],
@@ -299,9 +329,10 @@ function normalizeDraftMeta(raw: unknown): DraftMeta {
       why: typeof row.why === "string" ? row.why : "",
       whyNot: typeof row.whyNot === "string" ? row.whyNot : "",
       escalate: Boolean(row.escalate),
+      thread: threadReportFrom(row.thread),
     };
   }
-  return { sources: [], confidence: null, why: "", whyNot: "", escalate: false };
+  return { sources: [], confidence: null, why: "", whyNot: "", escalate: false, thread: null };
 }
 
 function draftMetaFromRow(sourceIds: unknown, promptVersion: string | null): DraftMeta {
@@ -362,6 +393,33 @@ export async function getConversation(id: string) {
      limit 40`,
     [MYCHEF_WORKSPACE, id],
   );
+  // MC-169: the newest 40 is what the thread pane shows, but a draft also has to know how the
+  // conversation started. One of these imported threads holds 1,514 messages, so the opening is
+  // fetched separately and the two are merged into the drafting context; the count is kept so the
+  // desk can say "read 50 of 1,514" rather than implying it read everything.
+  const totals = await query<{ total: string }>(
+    `select count(*)::text as total
+     from mychef_inbox.messages
+     where workspace_id = $1 and conversation_id = $2`,
+    [MYCHEF_WORKSPACE, id],
+  );
+  const messageCount = Number(totals[0]?.total ?? messages.length);
+  const opening =
+    messageCount > messages.length
+      ? await query<{ id: string; direction: string; body: string; created_at: Date }>(
+          `select id, direction, body, created_at
+           from mychef_inbox.messages
+           where workspace_id = $1 and conversation_id = $2
+           order by created_at asc
+           limit 10`,
+          [MYCHEF_WORKSPACE, id],
+        )
+      : [];
+  const drafting = new Map<string, (typeof messages)[number]>();
+  for (const message of [...opening, ...[...messages].reverse()]) drafting.set(message.id, message);
+  const draftingMessages = [...drafting.values()].sort(
+    (left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
+  );
   const drafts = await query<{
     id: string;
     body: string;
@@ -391,6 +449,10 @@ export async function getConversation(id: string) {
     tags,
     categories: categoriesFromTags(tags),
     messages: messages.reverse(),
+    /** What a draft is grounded on: the opening of the thread plus the newest messages. */
+    thread: draftingMessages,
+    /** Every message in the conversation, so the desk can say how much of it was read. */
+    messageCount,
     draft: draftRow
       ? {
           ...draftRow,
@@ -399,13 +461,21 @@ export async function getConversation(id: string) {
           why: meta.why,
           whyNot: meta.whyNot,
           escalate: meta.escalate,
+          thread: meta.thread,
         }
       : null,
     decided: Boolean(decisions[0]),
   };
 }
 
-/** Create a draft on open, or refresh stale drafts missing why/confidence. */
+/**
+ * Create the standing draft on open, or refresh one the thread has moved past (MC-168).
+ *
+ * The desk no longer waits for this before it paints: it renders whatever is stored and calls this
+ * behind the page. So the decision here is only "is the stored draft still the answer to this
+ * thread?", which draftFreshness() answers from timestamps: no draft, a draft missing its why, or a
+ * draft older than the newest message all mean write one; anything else is left alone.
+ */
 export async function ensureDraftForConversation(
   conversationId: string,
   authorId: string,
@@ -416,11 +486,12 @@ export async function ensureDraftForConversation(
   if (conversation.decided) {
     return { ok: false as const, error: "This conversation already has a recorded decision." };
   }
-  const staleMeta =
-    conversation.draft != null &&
-    !conversation.draft.why &&
-    conversation.draft.confidence == null;
-  if (conversation.draft && !staleMeta) {
+  const freshness = draftFreshness(
+    conversation.thread ?? conversation.messages,
+    conversation.draft,
+    new Date(),
+  );
+  if (conversation.draft && !freshness.needsDraft) {
     return {
       ok: true as const,
       created: false as const,
@@ -512,6 +583,8 @@ export async function draftForConversation(
   if (conversation.decided) {
     return { ok: false as const, error: "This conversation already has a recorded decision." };
   }
+  const threadMessages = conversation.thread ?? conversation.messages;
+  const brief = threadBrief(threadMessages);
   const inbound =
     [...conversation.messages].reverse().find((message) => message.direction === "inbound")
       ?.body ?? "";
@@ -532,7 +605,10 @@ export async function draftForConversation(
       excerpt: item.doc.content.slice(0, 700),
       score: item.score,
     }));
-  const draft = localStructuredDraft(inbound, knowledge, []);
+  // MC-169: the reply is grounded on the whole thread (first message to last), not on the newest
+  // inbound alone, so it cannot re-ask a detail the guest gave three messages ago. Retrieval stays
+  // keyed on the message being answered; the drafting context is the conversation.
+  const draft = localStructuredDraft(inbound, knowledge, [], threadMessages);
   const notice = retrievalNotice(ranked);
   const why = notice ?? draft.why;
   const messageId = [...conversation.messages]
@@ -544,6 +620,14 @@ export async function draftForConversation(
     why,
     whyNot: draft.whyNot,
     escalate: draft.escalate,
+    thread: {
+      messagesRead: brief.messagesRead,
+      messagesTotal: conversation.messageCount ?? brief.messagesRead,
+      inbound: brief.inbound,
+      outbound: brief.outbound,
+      firstAt: brief.firstAt,
+      lastAt: brief.lastAt,
+    },
     retrieval: {
       policyVersion: RETRIEVAL_POLICY_VERSION,
       workspaceId: MYCHEF_RETRIEVAL_SCOPE.workspaceId,
@@ -640,6 +724,10 @@ export async function agentDraftForConversation(
     why: agent.why,
     whyNot: agent.whyNot,
     escalate: agent.escalate,
+    thread: {
+      ...agent.thread,
+      messagesTotal: conversation.messageCount ?? agent.thread.messagesRead,
+    },
     agent: {
       promptVersion: agent.promptVersion,
       provider: agent.provider,

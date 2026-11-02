@@ -83,6 +83,12 @@ mock.module("next/navigation", {
 mock.module("@/data/mychef-store", {
   namedExports: {
     draftForConversation: record("draftForConversation"),
+    ensureDraftForConversation: record("ensureDraftForConversation", {
+      ok: true,
+      created: true,
+      draft: { body: "draft" },
+      conversation: { id: "conv-1" },
+    }),
     agentDraftForConversation: record("agentDraftForConversation", {
       ok: true,
       agent: {
@@ -234,6 +240,7 @@ const refusalText = (result: unknown): string => {
 
 const reviewPaths: { name: string; run: () => Promise<unknown> }[] = [
   { name: "draftConversationAction", run: () => inbox.draftConversationAction("conv-1") },
+  { name: "ensureDraftAction", run: () => inbox.ensureDraftAction("conv-1") },
   { name: "agentDraftAction", run: () => inbox.agentDraftAction("conv-1", "be brief") },
   { name: "updateTagsAction", run: () => inbox.updateTagsAction("conv-1", ["birthday"]) },
   {
@@ -289,9 +296,9 @@ test("the same paths do run for a reviewer, so the refusal above is the gate and
     const { calls } = await run(path.run);
     if (calls.length > 0) wrote.add(path.name);
   }
-  // 12 of the 13 have a write entry point the harness can see; curateArchiveAction writes through
+  // 13 of the 14 have a write entry point the harness can see; curateArchiveAction writes through
   // appPool after an archive read, so its control case is asserted separately below.
-  assert.equal(wrote.size, 12, `paths that wrote as reviewer: ${[...wrote].join(", ")}`);
+  assert.equal(wrote.size, 13, `paths that wrote as reviewer: ${[...wrote].join(", ")}`);
 });
 
 test("a verdict without the named-object confirmation is refused, and nothing is written", async () => {

@@ -15,6 +15,7 @@ import { revalidatePath } from "next/cache";
 import {
   agentDraftForConversation,
   draftForConversation,
+  ensureDraftForConversation,
   proposeFromDecision,
   recordOutcome,
   reviewConversation,
@@ -39,6 +40,30 @@ export async function draftConversationAction(conversationId: string): Promise<v
   await draftForConversation(conversationId, access.ctx.email || access.ctx.userId);
   revalidatePath(`/mychef/inbox`);
   revalidatePath(`/mychef/inbox/${conversationId}`);
+}
+
+/**
+ * MC-168: the desk's background refresh. The page renders the stored draft immediately and calls
+ * this behind it; it writes only when the thread has moved past the stored draft (see
+ * draftFreshness), so opening a conversation that is already answered costs no write.
+ *
+ * Same gate as every other write path here: server-only, workspace-bound, and refused for a viewer.
+ */
+export async function ensureDraftAction(
+  conversationId: string,
+): Promise<{ ok: boolean; error?: string; created?: boolean }> {
+  const access = await getWorkspaceAccess("mychef");
+  if (access.status !== "ok" || !canReview(access.ctx.role)) {
+    return { ok: false, error: "You cannot draft in this workspace." };
+  }
+  const result = await ensureDraftForConversation(
+    conversationId,
+    access.ctx.email || access.ctx.userId,
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+  revalidatePath(`/mychef/inbox`);
+  revalidatePath(`/mychef/inbox/${conversationId}`);
+  return { ok: true, created: result.created };
 }
 
 export type AgentActionState = {

@@ -8,8 +8,8 @@ import type { SourceRef } from "@/db/schema";
 import { withTenant, type AppTx } from "@/db/tenant";
 import { chunkBody, embedText, tokenize } from "@/lib/embed";
 import { retrieveWithin, type RetrievedItem } from "@/lib/retrieval";
+import { composeLocalReply, type ThreadMessage } from "@/lib/thread-memory";
 
-const NOT_A_PROVIDER = "This draft was not produced by a provider.";
 const ESCALATE =
   /\b(lawyer|attorney|sue|suing|chargeback|health department|food poisoning|food safety|press|journalist|custom contract)\b/i;
 
@@ -21,15 +21,6 @@ export type StructuredDraft = {
   sourceRefs: SourceRef[];
   escalate: boolean;
 };
-
-function positionQuote(item: RetrievedItem): string {
-  const lines = item.excerpt
-    .split("\n")
-    .map((line) => line.replace(/^#+\s*/, "").trim())
-    .filter((line) => line && line !== item.title);
-  const sentence = (lines[0] ?? item.excerpt).split(/(?<=\.)\s/)[0]?.trim() ?? "";
-  return sentence.slice(0, 280);
-}
 
 export function assertProviderCallAllowed(hasStoredKey: boolean, calling: boolean) {
   if (calling && !hasStoredKey) {
@@ -61,10 +52,18 @@ function lexicalScore(inbound: string, item: RetrievedItem): number {
   return (titleHits * 3 + bodyHits) / query.size;
 }
 
+/**
+ * MC-168/169/170: the text a reviewer sees is a real reply, not the old placeholder line
+ * ("This draft was not produced by a provider.") followed by a quote. Provenance still says the
+ * local path wrote it — model='local' in the row, the notice in the panel, the "not produced by a
+ * provider" caption in the thread view — but the words in the box are ones a guest could receive.
+ * `thread` is the whole conversation; when it is passed, the reply is grounded on all of it.
+ */
 export function localStructuredDraft(
   inbound: string,
   knowledge: RetrievedItem[],
   decisions: RetrievedItem[],
+  thread?: ThreadMessage[],
 ): StructuredDraft {
   const position = knowledge
     .filter((item) => item.kind === "position")
@@ -72,13 +71,19 @@ export function localStructuredDraft(
     .sort((left, right) => right.rank - left.rank)[0]?.item;
   const similar = decisions[0];
   const escalate = !position || position.score < 0.22 || ESCALATE.test(inbound);
-  const quote = position ? positionQuote(position) : "";
-  const draftText = position
-    ? `${NOT_A_PROVIDER} “${quote}”`
-    : `${NOT_A_PROVIDER} No position in this workspace matched the message, so a person should answer it.`;
+  const messages: ThreadMessage[] =
+    thread && thread.length > 0 ? thread : [{ direction: "inbound", body: inbound }];
+  const ordered = position
+    ? [position, ...knowledge.filter((item) => item.sourceId !== position.sourceId)]
+    : knowledge;
+  const composed = composeLocalReply(
+    ordered.map((item) => ({ title: item.title, kind: item.kind, excerpt: item.excerpt })),
+    messages,
+  );
+  const draftText = composed.text;
   const why = position
-    ? `The closest position in this workspace is “${position.title}”. The draft quotes that position and does not invent a policy.`
-    : "No position chunk in this workspace was close enough to quote.";
+    ? `The closest position in this workspace is “${position.title}”. ${composed.why}`
+    : composed.why;
   const whyNot = similar
     ? `The closest past decision in this workspace is “${similar.title}”. This draft does not copy that reply. It follows the position.`
     : "No similar past decision in this workspace was close enough to copy.";
