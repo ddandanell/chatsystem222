@@ -8,7 +8,7 @@
  */
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -61,8 +61,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { CategoryTagId } from "@/lib/contact-tags";
+import { threadClockLabel, type ContactResponseMetrics } from "@/lib/contact-response";
 import { confirmationMatches, confirmationPrompt, decisionTarget } from "@/lib/decision-confirmation";
-import type { ContactResponseMetrics } from "@/lib/contact-response";
 import { channelLabel } from "@/lib/channels";
 import { formatConfidence, formatWhen, initials } from "@/lib/format";
 import { REASON_CODES } from "@/lib/reason-codes";
@@ -141,8 +141,10 @@ function ContextPanel({
   saveTags,
   sourceOpen,
   setSourceOpen,
+  metrics,
 }: {
   conversation: DeskConversation;
+  metrics: ContactResponseMetrics;
   knowledgeTitles: Record<string, string>;
   knowledgeStatus: Record<string, string>;
   contextTab: ContextTab;
@@ -184,8 +186,13 @@ function ContextPanel({
         </TabsList>
       </div>
 
-      <TabsContent value="client" className="min-h-0 flex-1 overflow-hidden data-hidden:hidden">
-        <ScrollArea className="h-full">
+      <TabsContent
+        value="client"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden data-hidden:hidden"
+      >
+        {/* MC-181: the response clock lives with the client facts now, not above the thread. */}
+        <TimeStrip metrics={metrics} />
+        <ScrollArea className="min-h-0 flex-1">
           <div className="flex flex-col gap-4 p-4">
             <dl className="flex flex-col gap-4 text-sm">
               <div className="flex flex-col gap-1">
@@ -428,6 +435,7 @@ export function DeskReview({
     conversationId: conversation.id,
   });
   const canConfirm = confirmationMatches(confirmName, target);
+  const threadRef = useRef<HTMLDivElement | null>(null);
 
   const dirty = useMemo(
     () => Boolean(conversation.draft && draftText.trim() !== conversation.draft.body.trim()),
@@ -438,7 +446,7 @@ export function DeskReview({
     setContextTab(tab);
     const mobile =
       typeof window !== "undefined" &&
-      window.matchMedia("(max-width: 1023px)").matches;
+      window.matchMedia("(max-width: 1279px)").matches;
     if (opts?.forceSheet || mobile) setContextOpen(true);
   }
 
@@ -555,6 +563,14 @@ export function DeskReview({
     setSourceOpen(null);
   }, [conversation.id, conversation.draft?.body, conversation.tags, initialDraftError]);
 
+  // MC-181: a thread opens on the newest message, not on its oldest scroll position.
+  useEffect(() => {
+    const viewport = threadRef.current?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    if (viewport) viewport.scrollTop = viewport.scrollHeight;
+  }, [conversation.id, conversation.messages.length]);
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
@@ -617,10 +633,11 @@ export function DeskReview({
     saveTags,
     sourceOpen,
     setSourceOpen,
+    metrics,
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+    <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
       <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
         <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-4 lg:px-6">
           <Avatar size="sm">
@@ -643,7 +660,7 @@ export function DeskReview({
               type="button"
               size="sm"
               variant="outline"
-              className="lg:hidden"
+              className="xl:hidden"
               onClick={() => openContext(contextTab, { forceSheet: true })}
             >
               <PanelRightIcon data-icon="inline-start" />
@@ -662,9 +679,22 @@ export function DeskReview({
           </div>
         </header>
 
-        <TimeStrip metrics={metrics} />
+        {/* MC-181: one line of clock instead of a ~170px strip above the thread. */}
+        <div className="border-b border-border px-4 py-2 text-xs text-muted-foreground lg:px-6">
+          <span
+            data-slot="thread-clock"
+            className="block truncate tabular-nums"
+            title={metrics.waitingAbsolute}
+          >
+            {threadClockLabel(metrics)}
+          </span>
+        </div>
 
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div
+          ref={threadRef}
+          data-slot="thread-scroll"
+          className="min-h-[45%] flex-1 overflow-hidden"
+        >
           <ScrollArea className="h-full">
             <div className="flex flex-col gap-4 px-4 py-4 lg:px-6">
               {messageGroups.length === 0 ? (
@@ -707,16 +737,8 @@ export function DeskReview({
           </ScrollArea>
         </div>
 
-        <div className="z-10 shrink-0 border-t border-border bg-background/95 p-4 backdrop-blur lg:p-6">
-          <div className="flex flex-col gap-4">
-            <Alert>
-              <AlertTriangleIcon />
-              <AlertTitle>Sending is not connected</AlertTitle>
-              <AlertDescription>
-                Approve records the decision in the ledger. No channel sends from this desk yet.
-              </AlertDescription>
-            </Alert>
-
+        <div className="z-10 min-h-[10rem] shrink overflow-y-auto border-t border-border bg-background/95 p-4 backdrop-blur lg:p-6">
+          <div className="flex flex-col gap-3">
             {conversation.draft ? (
               <Card
                 className={cn(
@@ -788,8 +810,8 @@ export function DeskReview({
                     onFocus={() => {
                       if (dirty || editing) setContextTab("why");
                     }}
-                    rows={6}
-                    className="min-h-28 bg-background"
+                    rows={3}
+                    className="max-h-40 min-h-20 overflow-y-auto bg-background"
                     aria-label="AI suggested reply"
                   />
                   {dirty ? (
@@ -843,6 +865,13 @@ export function DeskReview({
                   <span className="self-center text-xs text-muted-foreground">
                     A approve · E edit · ⌘ Enter
                   </span>
+                  <span
+                    data-slot="composer-send-note"
+                    className="flex w-full items-center gap-1.5 text-xs text-muted-foreground"
+                  >
+                    <AlertTriangleIcon className="size-3.5 shrink-0" />
+                    Sending is not connected — Approve records the decision in the ledger only.
+                  </span>
                 </CardFooter>
               </Card>
             ) : (
@@ -883,7 +912,7 @@ export function DeskReview({
         </div>
       </section>
 
-      <aside className="hidden min-h-0 w-96 shrink-0 flex-col border-l border-border bg-muted/50 lg:flex">
+      <aside className="hidden min-h-0 w-96 shrink-0 flex-col border-l border-border bg-muted/50 xl:flex">
         <ContextPanel {...contextProps} />
       </aside>
 

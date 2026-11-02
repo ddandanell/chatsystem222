@@ -161,3 +161,29 @@ export function computeContactResponseMetrics(
     lastActivityLabel: lastActivityAt ? formatKl(lastActivityAt) : "—",
   };
 }
+
+/**
+ * MC-181: the thread's whole clock is one line above the messages, so the response strip stops
+ * eating the column. The five metrics keep living in Context > Client; this is the summary the
+ * reviewer needs while reading. Pure, so the wording is testable without a DOM.
+ */
+function clockStamp(date: Date): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: KL,
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+export function threadClockLabel(metrics: ContactResponseMetrics): string {
+  if (!metrics.lastActivityAt && metrics.waitingLabel === "—") return "No messages yet";
+  const waiting = metrics.waitingOnGuest
+    ? metrics.waitingLabel
+    : `Waiting ${metrics.waitingLabel}`;
+  const last = metrics.lastActivityAt
+    ? clockStamp(metrics.lastActivityAt)
+    : metrics.lastActivityLabel;
+  return `${waiting} · last ${last}`;
+}

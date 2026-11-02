@@ -14,9 +14,21 @@ Today the thread is mostly “read the chat and invent a reply.” That is slow 
 2. An AI suggestion always on screen.
 3. One click into “why this draft,” then a correction that **learns**.
 
-## Top bar (always visible when a conversation is open)
+## Time: one clock line on the thread, the full strip in Context > Client
 
-One horizontal strip above the thread. One purpose: **time**.
+**Changed by MC-181 (2026-11-01).** The five metrics used to render as a ~170px strip above
+the thread, inside the same flex column as the header and the composer. At a 900px window the
+strip plus the composer left the messages almost no height, which is what David photographed at
+18:44. The strip now lives in **Context > Client**, above the client facts, and the thread carries
+one line of clock:
+
+> `Waiting 1h 2m · last 1 Nov, 11:18`
+
+`threadClockLabel()` in `src/lib/contact-response.ts` builds that line from the same
+`ContactResponseMetrics` object the strip uses, so the two can never disagree. The absolute time
+of the last message is the line's `title` tooltip.
+
+The metric definitions below are unchanged; only where they are drawn changed.
 
 | Metric | Meaning | How to compute (no new tables) |
 |--------|---------|--------------------------------|
@@ -41,6 +53,12 @@ Never make the operator dig for a draft.
 3. Primary actions stay: Approve (ledger only until send is connected), Regenerate, Escalate.
 4. Editing the draft opens the learning path (below). Sending remains off until product allows it.
 
+**MC-181:** the composer is pinned to the bottom of the thread and is the only block that gives
+height back. The standing “Sending is not connected” alert became one line in the composer footer,
+and the draft box starts at three rows, grows with the text and caps at `max-h-40` with its own
+scroll. The thread scroll area holds `min-h-[45%]` of the desk so a long header or a tall composer
+can never squeeze the messages to nothing.
+
 ## “How it came to this” + correct & learn
 
 One control on the suggestion card: **How it came to this** → opens / focuses AI Brain (pane 3).
@@ -62,11 +80,11 @@ This is the anti-repetition loop: edit once → situational case → later retri
 
 ## Client info still required
 
-Keep Client Info tab: name, channel, tags, contact facts. Tag change still re-drafts (existing Phase 1 behavior).
+Keep Client Info tab: name, channel, tags, contact facts. Tag change still re-drafts (existing Phase 1 behavior). The five time metrics now open this tab’s content.
 
 ## Mobile
 
-Same data; stack as: time strip → history → sticky suggestion → sheet for “How it came to this” / feedback.
+Same data; stack as: **clock line → history → pinned suggestion → sheet** for “How it came to this” / feedback / client facts. The context rail is a pane only from `xl` (1280px); between 1024 and 1279 the desk is queue + thread and Context opens the existing sheet (`forceSheet`).
 
 ## Acceptance
 
