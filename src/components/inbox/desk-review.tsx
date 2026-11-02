@@ -61,6 +61,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { CategoryTagId } from "@/lib/contact-tags";
+import { confirmationMatches, confirmationPrompt, decisionTarget } from "@/lib/decision-confirmation";
 import type { ContactResponseMetrics } from "@/lib/contact-response";
 import { channelLabel } from "@/lib/channels";
 import { formatConfidence, formatWhen, initials } from "@/lib/format";
@@ -419,6 +420,14 @@ export function DeskReview({
   const [error, setError] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(initialDraftError);
   const [sourceOpen, setSourceOpen] = useState<string | null>(null);
+  // B3: a verdict is append-only, so it is taken behind a confirmation that names the person.
+  const [confirming, setConfirming] = useState<"accepted" | "edited" | "escalated" | null>(null);
+  const [confirmName, setConfirmName] = useState("");
+  const target = decisionTarget({
+    contactName: conversation.contact_name,
+    conversationId: conversation.id,
+  });
+  const canConfirm = confirmationMatches(confirmName, target);
 
   const dirty = useMemo(
     () => Boolean(conversation.draft && draftText.trim() !== conversation.draft.body.trim()),
@@ -438,10 +447,32 @@ export function DeskReview({
     else router.push(`/${slug}/inbox`);
   }
 
-  function submit(decision: "accepted" | "edited" | "escalated") {
+  /**
+   * B3: nothing calls this directly from a button or a keystroke any more. `requestVerdict` opens
+   * the confirmation, and the typed name travels with the submit; the store compares it against the
+   * conversation before writing.
+   */
+  function requestVerdict(decision: "accepted" | "edited" | "escalated") {
+    setError(null);
+    setConfirmName("");
+    setConfirming(decision);
+  }
+
+  function confirmVerdict() {
+    if (!confirming || !canConfirm) return;
+    const decision = confirming;
+    const typed = confirmName;
+    setConfirming(null);
+    setConfirmName("");
+    submit(decision, typed);
+  }
+
+  function submit(decision: "accepted" | "edited" | "escalated", confirmedName: string) {
     startTransition(async () => {
       setError(null);
       const form = new FormData();
+      form.set("confirm_object", "on");
+      form.set("confirm_name", confirmedName);
       const human =
         decision === "accepted" && dirty
           ? "edited"
@@ -534,13 +565,13 @@ export function DeskReview({
           target.isContentEditable);
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
         event.preventDefault();
-        submit(dirty ? "edited" : "accepted");
+        requestVerdict(dirty ? "edited" : "accepted");
         return;
       }
       if (typing) return;
       if (event.key === "a" || event.key === "A") {
         event.preventDefault();
-        submit(dirty ? "edited" : "accepted");
+        requestVerdict(dirty ? "edited" : "accepted");
       }
       if (event.key === "e" || event.key === "E") {
         event.preventDefault();
@@ -774,7 +805,7 @@ export function DeskReview({
                   <Button
                     type="button"
                     disabled={pending}
-                    onClick={() => submit(dirty ? "edited" : "accepted")}
+                    onClick={() => requestVerdict(dirty ? "edited" : "accepted")}
                   >
                     {pending ? (
                       <Spinner data-icon="inline-start" />
@@ -795,7 +826,7 @@ export function DeskReview({
                       setReasonCode("needs_human");
                       setRationale("Escalated to a human.");
                       setWhyNot("A person should take this.");
-                      submit("escalated");
+                      requestVerdict("escalated");
                     }}
                   >
                     Escalate
@@ -866,6 +897,64 @@ export function DeskReview({
           </SheetHeader>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/50">
             <ContextPanel {...contextProps} />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet
+        open={confirming !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirming(null);
+            setConfirmName("");
+          }
+        }}
+      >
+        <SheetContent side="bottom" className="mx-auto gap-0 p-0 sm:max-w-lg">
+          <SheetHeader className="border-b border-border">
+            <SheetTitle>Record this decision?</SheetTitle>
+            <SheetDescription>{confirmationPrompt(target)}</SheetDescription>
+          </SheetHeader>
+          <div className="flex flex-col gap-4 p-4">
+            <Field>
+              <FieldLabel htmlFor="confirm_name">Type “{target}” to confirm</FieldLabel>
+              <Input
+                id="confirm_name"
+                name="confirm_name"
+                value={confirmName}
+                onChange={(event) => setConfirmName(event.target.value)}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-describedby="confirm-help"
+              />
+              <FieldDescription id="confirm-help">
+                Nothing is sent. Approve records the decision in the ledger, and a decision cannot be
+                undone from this desk.
+              </FieldDescription>
+            </Field>
+            {error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Could not record</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" disabled={!canConfirm || pending} onClick={confirmVerdict}>
+                {pending ? <Spinner data-icon="inline-start" /> : null}
+                Record for {target}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setConfirming(null);
+                  setConfirmName("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>

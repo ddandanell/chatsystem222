@@ -245,6 +245,9 @@ const reviewPaths: { name: string; run: () => Promise<unknown> }[] = [
         rationale: "fine",
         why_not: "nothing better",
         final_text: "hello",
+        // B3: a verdict now needs the operator to name the object they are deciding.
+        confirm_object: "on",
+        confirm_name: "Maya",
       })),
   },
   { name: "outcomeAction", run: () => inbox.outcomeAction("decision-1", form({ outcome: "booked" })) },
@@ -289,6 +292,27 @@ test("the same paths do run for a reviewer, so the refusal above is the gate and
   // 12 of the 13 have a write entry point the harness can see; curateArchiveAction writes through
   // appPool after an archive read, so its control case is asserted separately below.
   assert.equal(wrote.size, 12, `paths that wrote as reviewer: ${[...wrote].join(", ")}`);
+});
+
+test("a verdict without the named-object confirmation is refused, and nothing is written", async () => {
+  // B3: the confirmation is not decoration. Without it the action stops before the store, so an
+  // irreversible decision cannot be recorded by a bare POST, a stale form or a replayed request.
+  state.role = "reviewer";
+  const { result, calls } = await run(() =>
+    inbox.reviewConversationAction(
+      "conv-1",
+      null,
+      form({
+        human_decision: "accepted",
+        reason_code: "good_as_drafted",
+        rationale: "fine",
+        why_not: "nothing better",
+        final_text: "hello",
+      }),
+    ),
+  );
+  assert.deepEqual(calls, [], "no write entry point may be reached without a confirmation");
+  assert.match(refusalText(result), /name/i);
 });
 
 test("viewer is refused by saveOperatorAction, as a visible error redirect", async () => {

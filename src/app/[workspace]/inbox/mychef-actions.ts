@@ -28,6 +28,7 @@ import {
   OUTCOMES,
   type Outcome,
 } from "@/lib/reason-codes";
+import { CONFIRMATION_REFUSAL } from "@/lib/decision-confirmation";
 import { canReview } from "@/lib/workspace-access";
 
 export type ActionState = { error?: string; message?: string; id?: string } | null;
@@ -126,6 +127,11 @@ export async function reviewConversationAction(
   const whyNot = String(formData.get("why_not") ?? "").trim();
   const finalText = String(formData.get("final_text") ?? "");
   const remember = formData.get("remember") === "on";
+  // B3: the confirmation travels with the submit, and the store checks the name itself. This flag
+  // only proves the request came through the confirmation step at all.
+  const confirmed = formData.get("confirm_object") === "on";
+  const confirmName = String(formData.get("confirm_name") ?? "");
+  if (!confirmed) return { error: CONFIRMATION_REFUSAL };
   if (!isHumanDecision(humanDecision)) return { error: "Choose a decision." };
   if (!isReasonCode(reasonCode)) return { error: "Choose a reason code." };
   if (!rationale || !whyNot) {
@@ -147,6 +153,7 @@ export async function reviewConversationAction(
     whyNot,
     finalText,
     remember,
+    confirmName,
   });
   if (!saved.ok) return { error: saved.error };
   revalidatePath(`/mychef/inbox`);
