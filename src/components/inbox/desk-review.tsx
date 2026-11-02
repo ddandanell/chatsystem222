@@ -74,6 +74,7 @@ import {
 import { formatConfidence, formatWhen, initials } from "@/lib/format";
 import { gateDraft, type DraftGate } from "@/lib/draft-gate";
 import { REASON_CODES } from "@/lib/reason-codes";
+import { latestGuestLanguage, reviewerLanguageLine } from "@/lib/guest-language";
 import { threadReadLabel } from "@/lib/thread-memory";
 import { cn } from "cn";
 
@@ -762,6 +763,7 @@ export function DeskReview({
     }
     return groups;
   }, [conversation.messages]);
+  const guestLanguageLine = reviewerLanguageLine(latestGuestLanguage(conversation.messages));
 
   const contextProps = {
     conversation,
@@ -842,6 +844,14 @@ export function DeskReview({
             {threadClockLabel(metrics)}
           </span>
         </div>
+        {guestLanguageLine ? (
+          <p
+            data-slot="guest-language"
+            className="border-b border-border px-4 py-2 text-xs text-muted-foreground lg:px-6"
+          >
+            {guestLanguageLine}
+          </p>
+        ) : null}
 
         <div
           ref={threadRef}
