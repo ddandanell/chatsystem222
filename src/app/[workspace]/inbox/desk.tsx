@@ -33,12 +33,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  deskFilterCounts,
   getConversation,
   getRecordedDecision,
+  getRecordedDecisionForConversation,
   listDeskQueue,
   listStoredKnowledge,
-  type DeskFilter,
 } from "@/data/mychef-store";
+import { parseDeskFilter } from "@/lib/desk-filters";
 import { outcomeAction } from "@/app/[workspace]/inbox/mychef-actions";
 import { computeContactResponseMetrics } from "@/lib/contact-response";
 import { draftAgeLabel, draftFreshness } from "@/lib/thread-memory";
@@ -47,11 +49,14 @@ import { OUTCOMES, decisionLabel, reasonLabel } from "@/lib/reason-codes";
 import { canReview } from "@/lib/workspace-access";
 import { cn } from "cn";
 
-function parseFilter(value: string | undefined): DeskFilter {
-  if (value === "all" || value === "auto_sent" || value === "escalated" || value === "needs_review") {
-    return value;
-  }
-  return "needs_review";
+/**
+ * MC-182: URL parsing lives in `@/lib/desk-filters` so the store, the chips and the page cannot
+ * disagree about which filter a URL means. `needs_review` stays a working alias of `needs_reply`.
+ */
+async function recordedFor(id: string) {
+  const byDecision = await getRecordedDecision(id).catch(() => null);
+  if (byDecision) return byDecision;
+  return getRecordedDecisionForConversation(id).catch(() => null);
 }
 
 export async function MychefDesk({
@@ -67,13 +72,14 @@ export async function MychefDesk({
   page: number;
   search: string;
 }) {
-  const filter = parseFilter(filterRaw);
+  const filter = parseDeskFilter(filterRaw);
   // The route's subject heading is the conversation this page is about (MC-022 follow-up): the
   // page owns one h1 and it must not repeat the word "Draft" already used by an h2 below.
   let subjectHeading: string | null = null;
-  const [inbox, recorded] = await Promise.all([
+  const [inbox, counts, recorded] = await Promise.all([
     listDeskQueue(filter, page, search),
-    selectedId ? getRecordedDecision(selectedId).catch(() => null) : Promise.resolve(null),
+    deskFilterCounts(search),
+    selectedId ? recordedFor(selectedId) : Promise.resolve(null),
   ]);
   const ids = inbox.rows.filter((row) => row.kind === "conversation").map((row) => row.id);
   const activeId = selectedId ?? null;
@@ -280,6 +286,7 @@ export async function MychefDesk({
           rows={inbox.rows}
           activeId={activeId}
           total={inbox.total}
+          counts={counts}
           page={inbox.page}
           pageSize={inbox.pageSize}
         />
