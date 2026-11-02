@@ -44,9 +44,13 @@ Names only; values live in the Vercel project and in the gitignored `.env.local`
 
 Optional: `GHL_WEBHOOK_REQUIRE_SIGNATURE=1` refuses the shared-secret mode and requires `x-ghl-signature`. Unset today, so a request with a valid `x-ghl-timestamp` within ±300s and the shared secret is accepted.
 
-### Never set `OPERATOR_BOOTSTRAP_PASSWORD` in production
+### `OPERATOR_BOOTSTRAP_PASSWORD` creates an owner; it never overwrites one
 
-`ensureBootstrapOperator()` (`src/lib/operators.ts`) runs on auth calls. When that variable holds at least 8 characters and does not match the stored scrypt hash, it **overwrites** `operator:bali@mychef.id` — new hash, `role: owner`, `enabled: true`. That silently undoes any password set at `/mychef/settings/access`, and it re-enables a deliberately disabled owner. Operator passwords are scrypt hashes with no recovery path: the supported move is a reset, not a lookup.
+`ensureBootstrapOperator()` (`src/lib/operators.ts`) runs on auth calls. It **creates** `operator:bali@mychef.id` when that row does not exist, and returns untouched when it does — it never reads, verifies or writes a stored hash, never changes `role`, and never sets `enabled = true` on an existing row. The insert is `on conflict (workspace_id, id) do nothing`, so two concurrent boots cannot overwrite each other either.
+
+Before 2026-11-01 it did the opposite: when the variable held at least 8 characters and did not match the stored scrypt hash, it rewrote `encrypted_secret`, set `enabled = true` and wrote `role: owner, approved: true`. One environment variable was then enough to reset the owner's password, re-enable a deliberately disabled owner and re-grant the owner role, from any unauthenticated request that reached an auth call. That path is gone; `tests/bootstrap-operator.test.ts` fails if an existing row is touched or an `update` returns to this function.
+
+Keep the variable unset in production anyway: the row exists there, so the only password path is the reset flow (`/login/reset`). Operator passwords are scrypt hashes with no recovery path — a reset, not a lookup.
 
 Related history worth keeping: with **zero** environment variables the project had no `DATABASE_URL`, so `usesMychefInbox()` was false and `/login` served the local demo branch — an email field, a Name field, demo buttons and no password input. Nobody could sign in. If `/login` ever lacks a password field again, check the env list before the database.
 
