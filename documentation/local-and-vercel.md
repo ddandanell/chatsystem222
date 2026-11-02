@@ -1,7 +1,7 @@
 # Run MyChef locally + on Vercel
 
-The console is a Next.js app. It deploys from the Vercel Git integration on `main`; there is no
-separate deploy branch.
+The console is a Next.js app. GitHub's production branch is `main`. There is no separate deploy
+branch. Vercel does not deploy a push by itself; see [deploy/github-vercel.md](./deploy/github-vercel.md).
 
 ## Manual local run
 
@@ -35,13 +35,12 @@ npm run build
   (`/api/cron/learn`, 18:00 UTC, bearer `CRON_SECRET`).
 - Environment variables: the names in `.env.example`. Set `AUTH_URL` to the deployment origin.
   Never commit values.
-- Pushes to `main` deploy automatically through the Git integration.
+- A push to `main` does not deploy. Production is an explicit deployment of this repository
+  onto `prj_AIYNRUT5LXDLRRoF2lasAgYeUGtH`. See [deploy/github-vercel.md](./deploy/github-vercel.md).
 
-As of 2026-11-01 the console is served on the generated domain
-`https://inbox-mychef-gilt.vercel.app`. `console.mychef.id`, `app.mychef.id` and `admin.mychef.id`
-return `DEPLOYMENT_NOT_FOUND`, so no custom domain is attached yet, and the Vercel project is not
-visible to the bot connectors (they see only `bali-villa-books-api-serverff`). A SHA-level
-deployment check therefore has to wait for correctly scoped access.
+The live console is [https://console.mychef.id](https://console.mychef.id). The same deployment
+answers on [https://chatsystem-sooty.vercel.app](https://chatsystem-sooty.vercel.app).
+`https://inbox-mychef-gilt.vercel.app` is not this project.
 
 ## Do not
 

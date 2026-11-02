@@ -67,7 +67,7 @@ Optional:
 
 Set the required names above on the Vercel project, plus `CRON_SECRET` if the cron should run and `GHL_WEBHOOK_SECRET` if the webhook should require a shared secret. Set `AUTH_URL` to the deployment URL. Leave automatic sending off. Phases 3–5 are not part of this deploy.
 
-Production branch `main`: the Vercel Git integration deploys every push to it ([documentation/local-and-vercel.md](./documentation/local-and-vercel.md)). GitHub Actions CI runs `npm test`, `npm run typecheck` and `npm run build`; it does not deploy. The console is currently served on the generated domain `https://inbox-mychef-gilt.vercel.app`; no custom domain is attached. `npm start` on a laptop still uses port 4317.
+Production branch `main`. GitHub Actions CI runs `npm test`, `npm run typecheck` and `npm run build`; it does not deploy. The live console is [https://console.mychef.id](https://console.mychef.id), with the alias [https://chatsystem-sooty.vercel.app](https://chatsystem-sooty.vercel.app), on Vercel project `prj_AIYNRUT5LXDLRRoF2lasAgYeUGtH`. Auto-deploy is off, so a merge to `main` does not update that site by itself. See [documentation/deploy/github-vercel.md](./documentation/deploy/github-vercel.md). `npm start` on a laptop still uses port 4317.
 
 ## Architecture
 

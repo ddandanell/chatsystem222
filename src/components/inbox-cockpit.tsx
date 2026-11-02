@@ -82,14 +82,18 @@ export function InboxCockpit({
   const index = items.findIndex((item) => item.id === selected?.id);
   const nextId = index >= 0 ? items[index + 1]?.id ?? items[0]?.id ?? "" : items[0]?.id ?? "";
 
-  useEffect(() => {
+  // Reset local edits before rendering a different selection or server draft.
+  const [selection, setSelection] = useState({ id: selected?.id, draft: selected?.draft, tagged });
+  const [wasEdited, setWasEdited] = useState(edited);
+  if (selection.id !== selected?.id || selection.draft !== selected?.draft || selection.tagged !== tagged) {
+    setSelection({ id: selected?.id, draft: selected?.draft, tagged });
     setDraft(selected?.draft ?? "");
     setPane(tagged ? "client" : "brain");
-  }, [selected?.id, selected?.draft, tagged]);
-
-  useEffect(() => {
+    setWasEdited(false);
+  } else if (wasEdited !== edited) {
+    setWasEdited(edited);
     if (edited) setPane("brain");
-  }, [edited]);
+  }
 
   const href = useMemo(() => {
     return (id?: string, nextFilter = filter) => {

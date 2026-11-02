@@ -100,7 +100,11 @@ test("the receipt is announced, focusable, and readable after the navigation is 
 
 test("a recorded thread cannot be decided twice from the desk", () => {
   const desk = read("src/components/inbox/desk-review.tsx");
-  assert.match(desk, /function submit\(decision: "accepted" \| "edited" \| "escalated"\) \{\s*\n\s*\/\/[^\n]*\n\s*if \(receipt\) return;/);
+  // B3 adds the typed name. The receipt guard stays the first statement either way.
+  assert.match(
+    desk,
+    /function submit\(decision: "accepted" \| "edited" \| "escalated"(?:, confirmedName: string)?\) \{\s*\n\s*\/\/[^\n]*\n\s*if \(receipt\) return;/,
+  );
   assert.match(desk, /function onKey\(event: KeyboardEvent\) \{\s*\n\s*if \(receipt\) return;/);
   assert.match(desk, /readOnly=\{Boolean\(receipt\)\}/);
   // The five action buttons are removed once the receipt is up, not merely disabled.
@@ -109,7 +113,8 @@ test("a recorded thread cannot be decided twice from the desk", () => {
 
 test("the receipt clears when a different thread is opened", () => {
   const desk = read("src/components/inbox/desk-review.tsx").replace(/\s+/g, " ");
-  // Same reset effect that clears the draft, the tab and the error when the thread changes.
-  assert.match(desk, /setRemember\(true\); setTagDraft\(conversation\.tags\.join\(/, "reset effect not found");
-  assert.match(desk, /setReceipt\(null\); \}, \[conversation\.id,/);
+  // The same reset that clears the draft, the tab and the error when the thread changes.
+  assert.match(desk, /setRemember\(true\); setTagDraft\(conversation\.tags\.join\(/, "reset not found");
+  assert.match(desk, /reviewInput\.id !== conversation\.id/);
+  assert.match(desk, /setReceipt\(null\);/);
 });

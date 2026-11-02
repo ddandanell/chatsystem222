@@ -1,5 +1,6 @@
-# Build check for GitHub. Production deploys come from the Vercel Git integration
-# on https://github.com/ddandanell/chatsystem222, branch main. This workflow does not deploy.
+# Build check for GitHub. This workflow does not deploy.
+# Production is an explicit deployment of main onto prj_AIYNRUT5LXDLRRoF2lasAgYeUGtH.
+# See documentation/deploy/github-vercel.md.
 name: CI
 
 on:

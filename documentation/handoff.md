@@ -76,7 +76,7 @@ Do not commit secrets. `.env.local` stays gitignored.
 4. WhatsApp adapter later (channel seam in `src/channels/inbound.ts`; `whatsappInboundReady = false`).
 5. ChatGPT project bulk import curation (8 pending MyChef imports await a human approver).
 6. Durable raw archive: `data/raw/mychef` is on the local filesystem and is not durable on Vercel.
-7. Vercel project access for `prj_AIYNRUT5LXDLRRoF2lasAgYeUGtH` is unverified; no deploy step may assume it.
+7. A merge to `main` does not update production. Deploy steps are in [deploy/github-vercel.md](./deploy/github-vercel.md). Do not assume a push changed `https://console.mychef.id`.
 
 ## Codebase comments for workers
 
