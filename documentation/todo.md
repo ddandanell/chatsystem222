@@ -28,7 +28,7 @@ We do these in order. A later step does not start until the one above it is usab
 
 ## Phase 3+ — mapped only, do not build yet
 
-See [Roadmap](./roadmap.md): Menu Engine & sales playbooks, BI & profitability, then full autopilot (WhatsApp multi-turn, calendar, PDF/payment). Design hooks only; no implementation until Phase 1–2 are trusted.
+See [Roadmap](./roadmap.md). Phase 3 has started as the Menus page: courses, allergens, prices, copy-only playbooks, and WhatsApp-formatted text. It does not send, and drafts cannot quote it. Business intelligence and full autopilot stay unstarted.
 
 ## Not the way we do it
 

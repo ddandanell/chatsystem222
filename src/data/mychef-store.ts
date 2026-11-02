@@ -1411,7 +1411,7 @@ export async function listStoredKnowledge(): Promise<StoredKnowledge[]> {
   }>(
     `select id, title, content, project_id, scope, status
      from mychef_inbox.knowledge
-     where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')
+     where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass', 'menu')
      order by title`,
     [MYCHEF_WORKSPACE],
   );
@@ -1438,7 +1438,7 @@ export async function listKnowledgeDrafts() {
   }>(
     `select id, title, status, project_id, source, scope
      from mychef_inbox.knowledge
-     where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')
+     where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass', 'menu')
      order by status, title`,
     [MYCHEF_WORKSPACE],
   );
@@ -1456,7 +1456,7 @@ export async function setKnowledgeStatus(
   const updated = await query<{ id: string }>(
     `update mychef_inbox.knowledge
      set status = $3, updated_at = now(), version = version + 1
-     where workspace_id = $1 and id = $2 and source not in ('ledger-rule', 'learning-pass', 'situational')
+     where workspace_id = $1 and id = $2 and source not in ('ledger-rule', 'learning-pass', 'situational', 'menu')
      returning id`,
     [MYCHEF_WORKSPACE, id, status],
   );

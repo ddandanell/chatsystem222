@@ -16,7 +16,7 @@ import { tokenize } from "@/lib/embed";
 export const RETRIEVAL_POLICY_VERSION = "approval-gated-project-v1";
 
 /** Candidate/learning sources are never quoted, even if their status says approved. */
-export const CANDIDATE_SOURCES = ["ledger-rule", "learning-pass"] as const;
+export const CANDIDATE_SOURCES = ["ledger-rule", "learning-pass", "menu"] as const;
 
 /**
  * Grouped counts used to explain a draft that quoted nothing. Only the fields the policy reads are
@@ -39,7 +39,7 @@ export const KNOWLEDGE_RETRIEVAL_SQL = `select id, title, content, status, sourc
      from mychef_inbox.knowledge
      where workspace_id = $1
        and status = 'approved'
-       and coalesce(source, '') not in ('ledger-rule', 'learning-pass')
+       and coalesce(source, '') not in ('ledger-rule', 'learning-pass', 'menu')
      order by title`;
 
 export type KnowledgeCandidate = {

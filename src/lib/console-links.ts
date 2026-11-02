@@ -13,6 +13,7 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   { label: "Inbox", href: (slug) => `/${slug}/inbox` },
   { label: "Import", href: (slug) => `/${slug}/import` },
   { label: "Knowledge", href: (slug) => `/${slug}/knowledge` },
+  { label: "Menus", href: (slug) => `/${slug}/menus` },
   { label: "Keys", href: (slug) => `/${slug}/settings/keys` },
   { label: "Webhooks", href: (slug) => `/${slug}/settings/webhooks` },
   { label: "Auto-pilot", href: (slug) => `/${slug}/settings/autopilot` },
