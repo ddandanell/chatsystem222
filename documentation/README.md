@@ -26,6 +26,7 @@ Project docs for the myCHEF operations console (decision ledger, inbox desk, kno
 |-----|---------|
 | [inbox-ux.md](./inbox-ux.md) | Three-pane inbox brief |
 | [inbox-design-system.md](./inbox-design-system.md) | shadcn desk contract (layout, tokens, spacing) |
+| [one-theme.md](./one-theme.md) | One theme: no dark block, no dark: utilities (B4) |
 | [contact-response-desk.md](./contact-response-desk.md) | Timers, always-on AI draft, correct→learn |
 | [decision-confirmation.md](./decision-confirmation.md) | Name the object before an irreversible verdict (B3) |
 | [inbox-three-pane-shipped.md](./inbox-three-pane-shipped.md) | What Phase 1 desk already shipped |
