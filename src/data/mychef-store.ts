@@ -35,11 +35,13 @@ import {
   learningSnippet,
   parseProposalMeta,
   queueTypeForReason,
+  statementForReason,
   type EvidenceDiff,
   type QueueType,
 } from "@/lib/learning-queue";
 import { PROVIDER_LABELS, PROVIDERS, type Provider } from "@/lib/providers";
 import { rankKnowledgeFromDatabase } from "@/lib/knowledge-retrieval";
+import { gateAuditAction, gateDraft } from "@/lib/draft-gate";
 import {
   MYCHEF_RETRIEVAL_SCOPE,
   RETRIEVAL_POLICY_VERSION,
@@ -575,11 +577,16 @@ export async function getRecordedDecision(id: string) {
  * decision — the write path refuses that, but a refusal is not a receipt.
  */
 export async function getRecordedDecisionForConversation(conversationId: string) {
+  // The receipt is turn-bound, same rule as the queue's `decided` chip. A guest follow-up after
+  // the newest decision must open the composer, not the previous verdict.
   const rows = await query<{ id: string }>(
-    `select id::text as id
-     from mychef_inbox.decision_records
-     where workspace_id = $1 and conversation_id = $2
-     order by created_at desc
+    `select d.id::text as id
+     from mychef_inbox.decision_records d
+     join mychef_inbox.conversations c
+       on c.workspace_id = d.workspace_id and c.id = d.conversation_id
+     where d.workspace_id = $1 and d.conversation_id = $2
+       and ${decisionCoversSql("c")}
+     order by d.created_at desc, d.id desc
      limit 1`,
     [MYCHEF_WORKSPACE, conversationId],
   );
@@ -797,6 +804,84 @@ export async function agentDraftForConversation(
   };
 }
 
+/**
+ * CS-020: renegotiate. The operator writes what the draft got wrong; that sentence goes into the
+ * provider call as the instruction (agentDraftForConversation stores it in the draft provenance), and
+ * the correction itself becomes a pending situational case so the learning queue holds it. Nothing is
+ * published, approved or sent by this path — a person still has to approve the rewritten draft and a
+ * person still has to approve the case.
+ */
+export async function renegotiateDraft(
+  conversationId: string,
+  authorId: string,
+  correction: string,
+) {
+  const text = correction.trim().slice(0, 600);
+  if (!text) {
+    return { ok: false as const, error: "Write what should change before renegotiating." };
+  }
+  const before = await getConversation(conversationId);
+  if (!before) return { ok: false as const, error: "That conversation is not in this workspace." };
+  if (before.decided) {
+    return { ok: false as const, error: "This conversation already has a recorded decision." };
+  }
+  if (!before.draft) {
+    return { ok: false as const, error: "There is no draft to correct yet. Write one first." };
+  }
+  const rewritten = await agentDraftForConversation(conversationId, authorId, text);
+  if (!rewritten.ok) return rewritten;
+
+  const content = buildProposalContent({
+    evidence: 1,
+    group: "procedure_gap",
+    reason: "renegotiate",
+    queueType: "Suggested",
+    snippet: text,
+    diffs: [
+      {
+        decisionId: conversationId,
+        ai: before.draft.body.slice(0, 800),
+        human: "",
+        why: text,
+      },
+    ],
+  });
+  const title = `Correction · ${before.contact_name ?? conversationId}`;
+  const base = `correction:${conversationId}`;
+  const existing = await query<{ id: string; status: string }>(
+    `select id, status from mychef_inbox.knowledge where workspace_id = $1 and id like $2`,
+    [MYCHEF_WORKSPACE, `${base}%`],
+  );
+  const live = existing.find((row) => row.status === "pending");
+  const id = live?.id ?? (existing.length === 0 ? base : `${base}:${Date.now()}`);
+  if (live) {
+    await query(
+      `update mychef_inbox.knowledge
+       set title = $3, content = $4, category = 'procedure_gap', updated_at = now(), version = version + 1
+       where workspace_id = $1 and id = $2 and status = 'pending'`,
+      [MYCHEF_WORKSPACE, id, title, content],
+    );
+  } else {
+    await query(
+      `insert into mychef_inbox.knowledge
+         (workspace_id, id, title, content, category, status, scope, source, version, project_id, area_id, created_at, updated_at)
+       values ($1, $2, $3, $4, 'procedure_gap', 'pending', 'business', 'situational', 1, $5, 'general', now(), now())`,
+      [MYCHEF_WORKSPACE, id, title, content, before.project_id || "mychef"],
+    );
+  }
+  await query(
+    `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
+     values ($1, $2, 'renegotiate', $3)`,
+    [MYCHEF_WORKSPACE, authorId, conversationId],
+  );
+  return {
+    ok: true as const,
+    instruction: text,
+    caseId: id,
+    conversation: rewritten.conversation,
+  };
+}
+
 function neonDecision(decision: HumanDecision): "approved" | "edited" | "rejected" {
   if (decision === "accepted") return "approved";
   if (decision === "edited") return "edited";
@@ -816,6 +901,8 @@ export async function reviewConversation(
     tags?: string[];
     /** B3: the person the operator confirmed they are deciding. Checked before anything is written. */
     confirmName?: string;
+    /** The reviewer pressed the below-bar confirmation for this exact text. */
+    gateAck?: boolean;
   },
 ) {
   const conversation = await getConversation(conversationId);
@@ -833,6 +920,34 @@ export async function reviewConversation(
   if (!conversation.draft) return { ok: false as const, error: "Draft a reply before recording a decision." };
   const human = neonDecision(input.humanDecision);
   const finalText = input.finalText.trim() || conversation.draft.body;
+
+  // CS-018: the gate is computed here, on the server, from the text actually being recorded and the
+  // approval state of the knowledge it cites. The desk renders the same function, but a stale or
+  // edited client value can never decide this: below bar without the explicit confirmation is
+  // refused before a row is written. Escalation approves nothing, so it is not gated.
+  const citedIds = (conversation.draft.sources ?? []).map((source) => source.id);
+  const citedStatus = citedIds.length
+    ? await query<{ id: string; status: string }>(
+        `select id, status from mychef_inbox.knowledge
+         where workspace_id = $1 and id = any($2::text[])`,
+        [MYCHEF_WORKSPACE, citedIds],
+      )
+    : [];
+  const statusById = new Map(citedStatus.map((row) => [row.id, row.status]));
+  const gate = gateDraft({
+    draftText: finalText,
+    thread: conversation.messages,
+    sources: citedIds.map((id) => ({ id, status: statusById.get(id) ?? null })),
+  });
+  if (gate.belowBar && input.humanDecision !== "escalated" && !input.gateAck) {
+    const blocked = gate.checks.find((check) => !check.pass);
+    return {
+      ok: false as const,
+      error: `Below the quality bar (${gate.score}/${gate.max}): ${(blocked?.why ?? "the gate did not pass").replace(/\.$/, "")}. Confirm to record it anyway.`,
+      gate,
+    };
+  }
+
   const client = await appPool.connect();
   try {
     await client.query("begin");
@@ -897,31 +1012,44 @@ export async function reviewConversation(
        values ($1, $2, 'feedback', $3)`,
       [MYCHEF_WORKSPACE, authorId, decisionId],
     );
+    if (gate.belowBar && input.humanDecision !== "escalated") {
+      await client.query(
+        `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
+         values ($1, $2, $3, $4)`,
+        [MYCHEF_WORKSPACE, authorId, gateAuditAction(gate), decisionId],
+      );
+    }
+    // CS-022: a rejection is a correction too. Before this, only an edit with Remember on created a
+    // case, so "wrong price / invented detail" was recorded in the ledger and never reached the
+    // learning queue. A rejection needs a written reason to be learnable; an edit needs changed text.
+    const learnsFromDecision =
+      input.humanDecision === "edited" || input.humanDecision === "rejected";
+    const decisionSignal = input.rationale.trim() || input.whyNot.trim();
     if (
       input.remember &&
-      input.humanDecision === "edited" &&
+      learnsFromDecision &&
       decisionId &&
-      finalText.trim() &&
-      finalText.trim() !== conversation.draft.body.trim()
+      decisionSignal &&
+      (input.humanDecision === "rejected" || finalText.trim() !== conversation.draft.body.trim())
     ) {
       const tag = (input.tags ?? conversation.tags)[0] ?? "general";
       const snippetId = `situational:${decisionId}`;
       const content = [
         `context_tag: ${tag}`,
         `reason: ${input.reasonCode}`,
+        `decision: ${input.humanDecision}`,
         `source_decision_ids: ${decisionId}`,
         "",
         "## Proposed snippet",
-        input.rationale,
+        decisionSignal,
         "",
         "## AI draft",
         conversation.draft.body,
-        "",
-        "## Human final",
-        finalText,
+        input.humanDecision === "rejected" ? "## Rejected as drafted" : "## Human final",
+        input.humanDecision === "rejected" ? finalText || "(rejected, no replacement written)" : finalText,
         "",
         "## Why not",
-        input.whyNot,
+        input.whyNot.trim() || "—",
       ].join("\n");
       await client.query(
         `insert into mychef_inbox.knowledge
@@ -1448,7 +1576,7 @@ export async function runMychefLearning(actorId: string) {
       goodAsDrafted += Number(row.n);
       continue;
     }
-    const proposal = statementFor(row.reason_code, Number(row.n));
+    const proposal = statementForReason(row.reason_code, Number(row.n));
     if (!proposal) continue;
     const id = `ledger-rule:${proposal.key}`;
     const existing = await query<{ status: string }>(
@@ -1527,7 +1655,7 @@ export async function runLearningPass(actorId: string, db: Db = appPool) {
       continue;
     }
 
-    const proposal = statementFor(row.reason_code, count);
+    const proposal = statementForReason(row.reason_code, count);
     if (!proposal) continue;
     clustered += 1;
 
@@ -1729,7 +1857,7 @@ export async function proposeFromDecision(decisionId: string, actorId: string) {
      where d.workspace_id = $1 and d.reason_code = $2 and ${LEARNABLE_DECISIONS_SQL}`,
     [MYCHEF_WORKSPACE, decision.reason_code],
   );
-  const proposal = statementFor(
+  const proposal = statementForReason(
     decision.reason_code,
     Math.max(1, Number(counted[0]?.n ?? 0)),
   );
@@ -1816,42 +1944,6 @@ export async function proposeFromDecision(decisionId: string, actorId: string) {
   return { ok: true as const, queued: true as const, id, queueType };
 }
 
-function statementFor(reason: string, count: number): { key: string; group: string; statement: string } | null {
-  if (["wrong_policy", "wrong_fact", "missing_knowledge"].includes(reason)) {
-    return {
-      key: reason,
-      group: "knowledge_gap",
-      statement: `When this case repeats, state the missing position clearly. Reviewers marked ${reason} ${count} times.`,
-    };
-  }
-  if (
-    ["too_formal", "too_casual", "should_have_asked", "missed_upsell", "customer_angry"].includes(
-      reason,
-    )
-  ) {
-    return {
-      key: reason,
-      group: "procedure_gap",
-      statement: `Match the human tone and procedure for this situation. Reviewers marked ${reason} ${count} times.`,
-    };
-  }
-  if (reason === "needs_human") {
-    return {
-      key: reason,
-      group: "escalation",
-      statement: `Escalate this class of request to a person. Reviewers marked needs_human ${count} times.`,
-    };
-  }
-  if (reason === "irrelevant_source") {
-    return {
-      key: reason,
-      group: "retrieval",
-      statement: `Do not lean on the cited source for this tag. Reviewers marked irrelevant_source ${count} times.`,
-    };
-  }
-  return null;
-}
-
 /** Approve → situational knowledge. Dismiss → retired. Never edits the curated 12. */
 export async function setMychefRuleStatus(
   id: string,
@@ -1871,8 +1963,9 @@ export async function setMychefRuleStatus(
   if (status === "approved") {
     await query(
       `update mychef_inbox.knowledge
-       set status = 'approved', source = 'situational', updated_at = now(), version = version + 1
-       where workspace_id = $1 and id = $2 and source in ('ledger-rule', 'learning-pass') and status = 'pending'`,
+       set status = 'approved', updated_at = now(), version = version + 1
+       where workspace_id = $1 and id = $2
+         and source in ('ledger-rule', 'learning-pass', 'situational') and status = 'pending'`,
       [MYCHEF_WORKSPACE, id],
     );
     await query(
