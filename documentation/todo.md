@@ -2,7 +2,7 @@
 
 A Digital Sous Chef for private-chef work. It drafts replies, you say why a draft is right or wrong, and the knowledge stays in MyChef. Automatic sending comes last.
 
-Each step is marked. The order of what is left is in [roadmap.md](./roadmap.md). A later phase does not start until Phase 1 and 2 are trustworthy.
+Each step is marked. The order of what is left is in [roadmap.md](./roadmap.md). Phases 4 and 5 do not start until Phase 1 and 2 are trustworthy.
 
 ## Now
 
@@ -30,7 +30,7 @@ The phase status lives in [roadmap.md](./roadmap.md) (marked 3 November 2026, As
 
 ## Phase 3+ — mapped only, do not build yet
 
-See [Roadmap](./roadmap.md): Menu Engine & sales playbooks, BI & profitability, then full autopilot (WhatsApp multi-turn, calendar, PDF/payment). Design hooks only; no implementation until Phase 1–2 are trusted.
+See [Roadmap](./roadmap.md). Phase 3 has started as the Menus page: courses, allergens, prices, copy-only playbooks, and WhatsApp-formatted text. It does not send, and drafts cannot quote it. Business intelligence and full autopilot stay unstarted.
 
 ## Not the way we do it
 

@@ -1,7 +1,7 @@
 /**
  * Console sections, grouped so the shell can show a menu instead of one flowing row.
  * Settings is its own group. History is the decided queue, where a past thread stays readable.
- * Do not auto-send.
+ * Menus sit with the library. Do not auto-send.
  */
 
 export type ConsoleLink = {
@@ -30,6 +30,7 @@ export const CONSOLE_GROUPS: ConsoleGroup[] = [
     label: "Library",
     links: [
       { label: "Knowledge", href: (slug) => `/${slug}/knowledge` },
+      { label: "Menus", href: (slug) => `/${slug}/menus` },
       { label: "Learning", href: (slug) => `/${slug}/candidates` },
     ],
   },

@@ -26,7 +26,7 @@ test("the knowledge query requires approval (the audit finding F1 fix)", () => {
 });
 
 test("the knowledge query keeps candidate sources out, including NULL sources", () => {
-  assert.match(normalized, /coalesce\(source, ''\) not in \('ledger-rule', 'learning-pass'\)/);
+  assert.match(normalized, /coalesce\(source, ''\) not in \('ledger-rule', 'learning-pass', 'menu'\)/);
 });
 
 test("the scope under test is the mychef project, not the whole workspace", () => {

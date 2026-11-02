@@ -30,6 +30,7 @@ const PAGES = [
   "src/app/[workspace]/inbox/[id]/page.tsx",
   "src/app/[workspace]/knowledge/page.tsx",
   "src/app/[workspace]/knowledge/[id]/page.tsx",
+  "src/app/[workspace]/menus/page.tsx",
   "src/app/[workspace]/settings/access/page.tsx",
   "src/app/[workspace]/settings/autopilot/page.tsx",
   "src/app/[workspace]/settings/keys/page.tsx",
