@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { logoutAction } from "@/app/login/actions";
-import { ConsoleNav } from "@/components/console-nav";
+import { ConsoleSidebar } from "@/components/console-sidebar";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { MobileNav } from "@/components/mobile-nav";
 import { WorkspaceMain } from "@/components/workspace-main";
@@ -21,16 +21,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { usesMychefInbox } from "@/db/mode";
 import { getWorkspaceAccess } from "@/lib/context";
-import { readAutopilot } from "@/lib/autopilot";
 import { roleLabel } from "@/lib/format";
 import { listMyWorkspaces } from "@/lib/workspace-access";
 
 function HeaderSkeleton() {
   return (
     <header className="shrink-0 border-b">
-      <div className="mx-auto flex w-full max-w-6xl animate-pulse flex-col gap-2 px-4 py-1.5 sm:gap-3 sm:py-3 md:px-6">
+      <div className="flex w-full animate-pulse flex-col gap-2 px-4 py-1.5 sm:gap-3 sm:py-3 md:px-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col gap-2">
             <div className="h-3 w-24 rounded bg-muted" />
@@ -74,13 +72,10 @@ async function WorkspaceChrome({ workspace }: { workspace: string }) {
 
   const ctx = access.ctx;
   const workspaces = await listMyWorkspaces(ctx.userId, ctx.email);
-  const autopilot = usesMychefInbox()
-    ? await readAutopilot()
-    : { enabled: false, confidenceThreshold: 0.8 };
 
   return (
     <header className="shrink-0 border-b">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-4 py-1.5 sm:gap-3 sm:py-3 md:px-6">
+      <div className="flex w-full flex-col gap-2 px-4 py-1.5 sm:gap-3 sm:py-3 md:px-6">
         <div className="flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex min-w-0 flex-col gap-1">
             <Link
@@ -123,12 +118,6 @@ async function WorkspaceChrome({ workspace }: { workspace: string }) {
             ))}
           </div>
         ) : null}
-        <ConsoleNav slug={ctx.orgSlug} />
-        <p className="text-xs text-muted-foreground sm:text-sm">
-          {autopilot.enabled
-            ? "Sending is not connected."
-            : "Automatic sending is not on. A review stays in the ledger and does not message the client."}
-        </p>
       </div>
     </header>
   );
@@ -140,12 +129,19 @@ export default async function WorkspaceLayout({
 }: LayoutProps<"/[workspace]">) {
   const { workspace } = await params;
   return (
-    <div className="flex h-dvh min-h-0 flex-col overflow-hidden pb-16 lg:pb-0">
-      <Suspense fallback={<HeaderSkeleton />}>
-        <WorkspaceChrome workspace={workspace} />
+    <div className="flex h-dvh min-h-0 overflow-hidden pb-16 lg:pb-0">
+      <Suspense fallback={null}>
+        <ConsoleSidebar slug={workspace} />
       </Suspense>
-      <WorkspaceMain>{children}</WorkspaceMain>
-      <MobileNav slug={workspace} />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <Suspense fallback={<HeaderSkeleton />}>
+          <WorkspaceChrome workspace={workspace} />
+        </Suspense>
+        <WorkspaceMain>{children}</WorkspaceMain>
+      </div>
+      <Suspense fallback={null}>
+        <MobileNav slug={workspace} />
+      </Suspense>
     </div>
   );
 }

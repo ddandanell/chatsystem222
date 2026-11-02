@@ -3,12 +3,12 @@
 /**
  * Phone navigation: four primary destinations plus a sheet for the rest.
  * Purpose: replace the 13-chip wrapping row that left 28px tap targets on mobile.
- * Desktop keeps ConsoleNav; this bar is lg:hidden.
+ * Desktop uses the grouped sidebar; this bar is lg:hidden.
  */
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   BookOpenIcon,
   InboxIcon,
@@ -16,7 +16,7 @@ import {
   MenuIcon,
   SparklesIcon,
 } from "lucide-react";
-import { CONSOLE_LINKS } from "@/lib/console-links";
+import { CONSOLE_GROUPS, linkIsActive } from "@/lib/console-links";
 import {
   Sheet,
   SheetContent,
@@ -35,10 +35,11 @@ const PRIMARY = [
 
 export function MobileNav({ slug }: { slug: string }) {
   const pathname = usePathname() ?? "";
+  const filter = useSearchParams().get("filter");
   const [open, setOpen] = useState(false);
 
   function isActive(href: string) {
-    return pathname === href || pathname.startsWith(`${href}/`);
+    return linkIsActive(pathname, href, filter);
   }
 
   return (
@@ -91,28 +92,37 @@ export function MobileNav({ slug }: { slug: string }) {
               Every console page. Sending stays off on all of them.
             </SheetDescription>
           </SheetHeader>
-          <ul className="grid grid-cols-2 gap-2 pb-4">
-            {CONSOLE_LINKS.map((item) => {
-              const href = item.href(slug);
-              const active = isActive(href);
-              return (
-                <li key={item.label}>
-                  <Link
-                    href={href}
-                    data-tap
-                    onClick={() => setOpen(false)}
-                    aria-current={active ? "page" : undefined}
-                    className={cn(
-                      "flex min-h-11 items-center rounded-lg border border-border px-3 text-sm",
-                      active ? "bg-secondary text-secondary-foreground" : "bg-background",
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="flex flex-col gap-4 pb-4">
+            {CONSOLE_GROUPS.map((group) => (
+              <div key={group.id} className="flex flex-col gap-2">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  {group.label}
+                </p>
+                <ul className="grid grid-cols-2 gap-2">
+                  {group.links.map((item) => {
+                    const href = item.href(slug);
+                    const active = isActive(href);
+                    return (
+                      <li key={item.label}>
+                        <Link
+                          href={href}
+                          data-tap
+                          onClick={() => setOpen(false)}
+                          aria-current={active ? "page" : undefined}
+                          className={cn(
+                            "flex min-h-11 items-center rounded-lg border border-border px-3 text-sm",
+                            active ? "bg-secondary text-secondary-foreground" : "bg-background",
+                          )}
+                        >
+                          {item.label}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
         </SheetContent>
       </Sheet>
     </nav>

@@ -1,5 +1,6 @@
 /**
- * One list of console sections, shared by the desktop nav and the phone sheet.
+ * Console sections, grouped so the shell can show a menu instead of one flowing row.
+ * Settings is its own group. History is the decided queue, where a past thread stays readable.
  * Do not auto-send.
  */
 
@@ -8,17 +9,52 @@ export type ConsoleLink = {
   href: (slug: string) => string;
 };
 
-export const CONSOLE_LINKS: ConsoleLink[] = [
-  { label: "Dashboard", href: (slug) => `/${slug}/dashboard` },
-  { label: "Inbox", href: (slug) => `/${slug}/inbox` },
-  { label: "Import", href: (slug) => `/${slug}/import` },
-  { label: "Knowledge", href: (slug) => `/${slug}/knowledge` },
-  { label: "Keys", href: (slug) => `/${slug}/settings/keys` },
-  { label: "Webhooks", href: (slug) => `/${slug}/settings/webhooks` },
-  { label: "Auto-pilot", href: (slug) => `/${slug}/settings/autopilot` },
-  { label: "Access", href: (slug) => `/${slug}/settings/access` },
-  { label: "Learning", href: (slug) => `/${slug}/candidates` },
-  { label: "Evals", href: (slug) => `/${slug}/evals` },
-  { label: "Team", href: (slug) => `/${slug}/team` },
-  { label: "Audit", href: (slug) => `/${slug}/audit` },
+export type ConsoleGroup = {
+  id: "desk" | "library" | "settings";
+  label: string;
+  links: ConsoleLink[];
+};
+
+export const CONSOLE_GROUPS: ConsoleGroup[] = [
+  {
+    id: "desk",
+    label: "Desk",
+    links: [
+      { label: "Inbox", href: (slug) => `/${slug}/inbox` },
+      { label: "History", href: (slug) => `/${slug}/inbox?filter=decided` },
+      { label: "Dashboard", href: (slug) => `/${slug}/dashboard` },
+    ],
+  },
+  {
+    id: "library",
+    label: "Library",
+    links: [
+      { label: "Knowledge", href: (slug) => `/${slug}/knowledge` },
+      { label: "Learning", href: (slug) => `/${slug}/candidates` },
+    ],
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    links: [
+      { label: "Keys", href: (slug) => `/${slug}/settings/keys` },
+      { label: "Access", href: (slug) => `/${slug}/settings/access` },
+      { label: "Team", href: (slug) => `/${slug}/team` },
+      { label: "Auto-pilot", href: (slug) => `/${slug}/settings/autopilot` },
+      { label: "Webhooks", href: (slug) => `/${slug}/settings/webhooks` },
+      { label: "Audit", href: (slug) => `/${slug}/audit` },
+      { label: "Evals", href: (slug) => `/${slug}/evals` },
+      { label: "Import", href: (slug) => `/${slug}/import` },
+    ],
+  },
 ];
+
+export function isHistoryHref(pathname: string, filter: string | null): boolean {
+  return pathname.includes("/inbox") && filter === "decided";
+}
+
+export function linkIsActive(pathname: string, href: string, filter: string | null): boolean {
+  if (href.includes("filter=decided")) return isHistoryHref(pathname, filter);
+  if (href.endsWith("/inbox")) return pathname.includes("/inbox") && filter !== "decided";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}

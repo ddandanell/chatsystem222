@@ -792,17 +792,18 @@ export function DeskReview({
   return (
     <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
       <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-        <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-4 lg:px-6">
+        <header className="flex items-center gap-2 border-b border-border px-4 py-4 lg:px-6">
           <Avatar size="sm">
             <AvatarFallback>{initials(conversation.contact_name)}</AvatarFallback>
           </Avatar>
-          <h2 className="text-sm font-medium">{conversation.contact_name ?? "Contact"}</h2>
-          <Badge variant="outline">{conversation.status}</Badge>
-          <Badge variant="secondary">{channelLabel(conversation.channel)}</Badge>
-          {conversation.categories.map((id) => (
-            <CategoryBadge key={id} id={id} />
-          ))}
-          <div className="ml-auto flex items-center gap-2">
+          <h2 className="min-w-0 truncate text-sm font-medium">{conversation.contact_name ?? "Contact"}</h2>
+          <Badge variant="outline" className="hidden shrink-0 sm:inline-flex">
+            {conversation.status}
+          </Badge>
+          <Badge variant="secondary" className="hidden shrink-0 md:inline-flex">
+            {channelLabel(conversation.channel)}
+          </Badge>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <AgentPanel
               conversationId={conversation.id}
               contactName={conversation.contact_name}

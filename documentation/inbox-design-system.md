@@ -29,7 +29,7 @@ Do **not** use raw instructional text as the page. Do **not** hand-roll list row
 
 ## Global shell (same console)
 
-Keep existing workspace header / `ConsoleNav` unless you add a shadcn `Sidebar` without breaking other routes. Routes remain: Dashboard, Inbox, Knowledge, Keys, Access, Settings, Candidates, …
+The console menu is grouped, not one header row. Desktop uses `ConsoleSidebar` (Desk, Library, and a Settings disclosure). Phones keep the four primary tabs and a More sheet with the same groups. History is `/{workspace}/inbox?filter=decided`. Routes stay: Dashboard, Inbox, History, Knowledge, Learning, Keys, Access, Team, Auto-pilot, Webhooks, Audit, Evals, Import.
 
 ## Pane contracts
 
