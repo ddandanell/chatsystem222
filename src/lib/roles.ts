@@ -34,7 +34,34 @@ export function parseRole(value: unknown): Role | null {
  * read. It never resolves to reviewer, because reviewer can draft and record decisions.
  */
 export function operatorRole(value: unknown): Role {
-  return parseRole(value) ?? "viewer";
+  return resolveOperatorRole(value).role;
+}
+
+/**
+ * The full answer for one stored role: the powers it grants, whether it was understood, and what it
+ * actually said.
+ *
+ * Reading an unknown role as viewer is the safe default, but on its own it is a silent downgrade:
+ * an owner looking at the directory sees "viewer" and cannot tell a deliberate read-only seat from
+ * a typo the row will never recover from. `recognised` is what makes the deny visible, and `stored`
+ * is the value to quote back so the owner can fix it.
+ */
+export type RoleResolution = {
+  role: Role;
+  /** The stored value, trimmed, when it was a string; null when the row held none. */
+  stored: string | null;
+  /** False when the stored value named no known role, so `role` is the read-only fallback. */
+  recognised: boolean;
+};
+
+export function resolveOperatorRole(value: unknown): RoleResolution {
+  const parsed = parseRole(value);
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return {
+    role: parsed ?? "viewer",
+    stored: trimmed ? trimmed : null,
+    recognised: parsed !== null,
+  };
 }
 
 /** Draft a reply, accept or reject a candidate, record an outcome. Viewer is read-only. */

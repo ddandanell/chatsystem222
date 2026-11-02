@@ -5,7 +5,7 @@ import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:cry
 import { promisify } from "node:util";
 import { appPool } from "@/db/client";
 import { usesMychefInbox } from "@/db/mode";
-import { operatorRole, type Role } from "@/lib/roles";
+import { resolveOperatorRole, type Role } from "@/lib/roles";
 
 const scrypt = promisify(scryptCallback);
 const WORKSPACE = "mychef";
@@ -25,6 +25,13 @@ export type Operator = {
   approved: boolean;
   /** The row's own switch, kept separate from `approved` so the directory can tell the two apart. */
   enabled: boolean;
+  /**
+   * False when the row's stored role named no known role. The seat is read-only, and the directory
+   * must say so: a silent downgrade to viewer reads exactly like a deliberate read-only seat.
+   */
+  roleRecognised: boolean;
+  /** What the row's config actually said, trimmed, so the directory can quote it back. */
+  storedRole: string | null;
 };
 
 type OperatorConfig = {
@@ -37,11 +44,6 @@ type OperatorConfig = {
 
 function operatorId(email: string) {
   return `operator:${email.trim().toLowerCase()}`;
-}
-
-function asRole(value: string | undefined): OperatorRole {
-  // Unrecognised jsonb resolves to viewer (read-only), never to reviewer (can write).
-  return operatorRole(value);
 }
 
 export async function hashPassword(password: string): Promise<string> {
@@ -63,12 +65,17 @@ function toOperator(id: string, config: OperatorConfig | null, enabled: boolean)
   if (config?.purpose !== "operator") return null;
   const email = (config.email || id.replace(/^operator:/, "")).trim().toLowerCase();
   if (!email.includes("@")) return null;
+  // Unrecognised jsonb resolves to viewer (read-only), never to reviewer (can write); the flags
+  // carry the fact that it was unrecognised so no page has to guess.
+  const resolution = resolveOperatorRole(config.role);
   return {
     email,
     name: config.name?.trim() || email,
-    role: asRole(config.role),
+    role: resolution.role,
     approved: enabled && config.approved !== false,
     enabled,
+    roleRecognised: resolution.recognised,
+    storedRole: resolution.stored,
   };
 }
 
