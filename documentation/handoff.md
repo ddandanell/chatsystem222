@@ -13,7 +13,7 @@ Mental model: LLM = reasoning, GHL (later WhatsApp) = channel adapters, MCP/tool
 | Path | Purpose |
 |------|---------|
 | `documentation/todo.md` | Near-term ordered steps |
-| `documentation/roadmap.md` | Master phases 1–5 (3–5 not started) |
+| `documentation/roadmap.md` | Master phases 1–5, with status marked 3 November 2026 (Asia/Kuala_Lumpur). Phases 1–2 are in progress. Phases 3–5 are not started. |
 | `documentation/agent-spec.md` | DDL, RLS, reason codes, learning loop |
 | `documentation/technical-blueprint.md` | Stack, BYOK, multi-tenant |
 | `documentation/architecture.md` | Original four-store foundation |
@@ -59,6 +59,8 @@ Do not commit secrets. `.env.local` stays gitignored.
 8. Prefer Vercel AI Gateway and DeepSeek keys first among BYOK providers.
 
 ## Done so far (high level)
+
+Read [roadmap.md](./roadmap.md) for the phase marks. In short: the three-pane desk, ledger, grouped knowledge, learning queue, keys screen, audit, evals, and the auto-pilot switch (default off) are in this repository. Delivery is not.
 
 - Multi-tenant decision ledger prototype, then pivoted onto live Neon `mychef_inbox`.
 - Inbox listing needs_reply, knowledge list, draft copilot (local drafter if no key), feedback → decision_records/feedback.
