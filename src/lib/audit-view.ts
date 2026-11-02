@@ -11,6 +11,16 @@
  * cannot be resolved is shown as the id itself, because that still settles who wrote it.
  */
 
+/**
+ * What the list is, in one sentence, kept here so a test can assert the sentence itself.
+ *
+ * The route used to describe itself as "feedback and rule status changes", which was wrong in
+ * both directions: the list also carries key, operator and import changes, and it now shows the
+ * actor on every row. Copy that misdescribes the list is how an audit page stops being read.
+ */
+export const AUDIT_DESCRIPTION =
+  "Recorded changes for this workspace, newest first, each with the actor that made it. Rows whose source has no actor say so. Other workspaces are not listed.";
+
 /** The table has an actor column, but this row's value is empty or whitespace. */
 export const UNKNOWN_ACTOR = "unknown";
 
